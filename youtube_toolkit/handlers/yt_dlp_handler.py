@@ -205,16 +205,22 @@ class YTDLPHandler:
 
                 # Return the path to the downloaded file
                 audio_path = os.path.join(output_path, f'{video_id}.{format}')
-                if os.path.exists(audio_path):
+                if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
                     return audio_path
                 else:
                     # Try to find any audio file with the video_id
                     for ext in ['wav', 'mp3', 'm4a', 'webm', 'aac', 'ogg', 'flac']:
                         potential_path = os.path.join(output_path, f'{video_id}.{ext}')
-                        if os.path.exists(potential_path):
+                        if os.path.exists(potential_path) and os.path.getsize(potential_path) > 0:
                             return potential_path
 
-                    raise ValueError("Audio file not found after download")
+                    # Clean up any empty files
+                    for ext in ['wav', 'mp3', 'm4a', 'webm', 'aac', 'ogg', 'flac']:
+                        potential_path = os.path.join(output_path, f'{video_id}.{ext}')
+                        if os.path.exists(potential_path) and os.path.getsize(potential_path) == 0:
+                            os.remove(potential_path)
+
+                    raise ValueError("Audio download failed: file is empty or not found")
 
             except Exception as e:
                 last_error = e
@@ -329,12 +335,19 @@ class YTDLPHandler:
                     # If all fallbacks failed, raise the original error
                     raise format_error
             
-            # Find the downloaded file
+            # Find the downloaded file (must be non-empty)
             for file in os.listdir(output_path):
-                if file.startswith(video_id) and os.path.isfile(os.path.join(output_path, file)):
-                    return os.path.join(output_path, file)
-            
-            raise ValueError("Video file not found after download")
+                file_path = os.path.join(output_path, file)
+                if file.startswith(video_id) and os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
+                    return file_path
+
+            # Clean up any empty files
+            for file in os.listdir(output_path):
+                file_path = os.path.join(output_path, file)
+                if file.startswith(video_id) and os.path.isfile(file_path) and os.path.getsize(file_path) == 0:
+                    os.remove(file_path)
+
+            raise ValueError("Video download failed: file is empty or not found")
         except Exception as e:
             raise ValueError(f"Failed to download video: {e}")
     
