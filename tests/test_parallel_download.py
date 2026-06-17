@@ -114,10 +114,14 @@ class TestAxisOneConcurrentFragments:
 # ---------------------------------------------------------------------------
 
 def _make_service(download_audio_impl):
-    """Build a DownloadService whose toolkit.download_audio is mocked."""
-    toolkit = MagicMock()
-    toolkit.download_audio.side_effect = download_audio_impl
-    return DownloadService(toolkit)
+    """Build a DownloadService whose own download_audio is mocked.
+
+    download_many fans out via self.download_audio (same service), so the
+    per-item download is stubbed on the service instance, not on the toolkit.
+    """
+    service = DownloadService(MagicMock())
+    service.download_audio = MagicMock(side_effect=download_audio_impl)
+    return service
 
 
 class TestAxisTwoDownloadMany:
@@ -176,14 +180,13 @@ class TestAxisTwoDownloadMany:
         assert all(r["success"] for r in results)
 
     def test_video_media_type_routes_to_download_video(self):
-        toolkit = MagicMock()
-        toolkit.download_video.side_effect = lambda url, **kw: f"/v/{url}.mp4"
-        service = DownloadService(toolkit)
+        service = DownloadService(MagicMock())
+        service.download_video = MagicMock(side_effect=lambda url, **kw: f"/v/{url}.mp4")
         results = service.download_many(["a", "b"], media_type="video",
                                         quality="1080p", max_workers=2)
         assert all(r["success"] for r in results)
         assert {r["path"] for r in results} == {"/v/a.mp4", "/v/b.mp4"}
-        toolkit.download_video.assert_called()
+        service.download_video.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -302,9 +305,8 @@ class TestBackwardCompatSignatures:
 
     def test_old_call_style_unchanged(self):
         """Calling without any new params behaves exactly as before."""
-        toolkit = MagicMock()
-        toolkit.download_audio.return_value = "/out/a.wav"
-        service = DownloadService(toolkit)
+        service = DownloadService(MagicMock())
+        service.download_audio = MagicMock(return_value="/out/a.wav")
         # Sequential (default) download_many with positional-style kwargs only.
         results = service.download_many(["u"], media_type="audio")
         assert results == [

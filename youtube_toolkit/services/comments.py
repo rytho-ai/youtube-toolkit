@@ -36,7 +36,7 @@ class CommentsService:
             max_results=max_results
         )
 
-        return self._toolkit.advanced_get_comments(url, filters)
+        return self.advanced_get_comments(url, filters)
 
     def search_comments(self, url: str, search_term: str, max_results: int = 100) -> Dict[str, Any]:
         from ..core.comments import CommentFilters
@@ -46,7 +46,7 @@ class CommentsService:
             max_results=max_results
         )
 
-        return self._toolkit.advanced_get_comments(url, filters)
+        return self.advanced_get_comments(url, filters)
 
     def get_high_engagement_comments(self, url: str, min_likes: int = 10,
                                    max_results: int = 50) -> Dict[str, Any]:
@@ -58,7 +58,7 @@ class CommentsService:
             order=CommentFilters.Order.RATING
         )
 
-        return self._toolkit.advanced_get_comments(url, filters)
+        return self.advanced_get_comments(url, filters)
 
     def get_comments_by_author(self, url: str, author_channel_id: str,
                               max_results: int = 100) -> Dict[str, Any]:
@@ -69,7 +69,7 @@ class CommentsService:
             max_results=max_results
         )
 
-        return self._toolkit.advanced_get_comments(url, filters)
+        return self.advanced_get_comments(url, filters)
 
     def get_recent_comments(self, url: str, days_back: int = 7,
                            max_results: int = 100) -> Dict[str, Any]:
@@ -82,7 +82,7 @@ class CommentsService:
             order=CommentFilters.Order.TIME
         )
 
-        return self._toolkit.advanced_get_comments(url, filters)
+        return self.advanced_get_comments(url, filters)
 
     def export_comments(self, url: str, format: str = 'json',
                        output_path: Optional[str] = None, filters: Optional[Dict] = None) -> str:
@@ -92,7 +92,7 @@ class CommentsService:
         from datetime import datetime
 
         # Get comments
-        results = self._toolkit.advanced_get_comments(url, filters)
+        results = self.advanced_get_comments(url, filters)
         comments = results.get('comments', [])
 
         if not comments:
@@ -141,7 +141,7 @@ class CommentsService:
 
     def display_comments(self, url: str, top_n: int = 3,
                         sort_by: str = 'relevance') -> None:
-        comments = self._toolkit.get_comments(url, max_results=top_n, sort_by=sort_by)
+        comments = self.get_comments(url, max_results=top_n, sort_by=sort_by)
 
         if not comments:
             print("No comments found for this video.")
@@ -163,7 +163,7 @@ class CommentsService:
             filters.max_results = max_results
 
         # Use existing advanced_get_comments
-        raw_result = self._toolkit.advanced_get_comments(url, filters)
+        raw_result = self.advanced_get_comments(url, filters)
 
         # Convert raw comments to Comment objects
         comments = []

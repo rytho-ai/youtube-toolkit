@@ -23,7 +23,7 @@ class AnalyzeService:
         return self._toolkit.yt_dlp.get_live_status(url)
 
     def is_live(self, url: str) -> bool:
-        status = self._toolkit.get_live_status(url)
+        status = self.get_live_status(url)
         return status.get('is_live', False)
 
     def get_heatmap(self, url: str) -> List[Dict[str, Any]]:

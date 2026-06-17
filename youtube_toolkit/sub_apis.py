@@ -50,7 +50,7 @@ class ChannelGetAPI:
         Returns:
             Channel metadata dict
         """
-        return self._toolkit.get_channel_info(channel)
+        return self._toolkit._channel.get_channel_info(channel)
 
     def videos(self, channel: str,
                limit: Optional[int] = None,
@@ -77,7 +77,7 @@ class ChannelGetAPI:
                 if self._toolkit.verbose:
                     print("⚠️ scrapetube not installed. Using pytubefix.")
 
-        return self._toolkit.get_channel_videos(
+        return self._toolkit._channel.get_channel_videos(
             channel, content_type='videos', limit=limit, sort_by=sort_by
         )
 
@@ -104,7 +104,7 @@ class ChannelGetAPI:
                 if self._toolkit.verbose:
                     print("⚠️ scrapetube not installed. Using pytubefix.")
 
-        return self._toolkit.get_channel_videos(
+        return self._toolkit._channel.get_channel_videos(
             channel, content_type='shorts', limit=limit
         )
 
@@ -131,7 +131,7 @@ class ChannelGetAPI:
                 if self._toolkit.verbose:
                     print("⚠️ scrapetube not installed. Using pytubefix.")
 
-        return self._toolkit.get_channel_videos(
+        return self._toolkit._channel.get_channel_videos(
             channel, content_type='live', limit=limit
         )
 
@@ -181,7 +181,7 @@ class ChannelGetAPI:
         Returns:
             List of playlist info dicts
         """
-        return self._toolkit.get_channel_videos(
+        return self._toolkit._channel.get_channel_videos(
             channel, content_type='playlists', limit=limit
         )
 
@@ -203,7 +203,7 @@ class PlaylistGetAPI:
         Returns:
             Playlist metadata dict
         """
-        return self._toolkit.get_playlist_info(url)
+        return self._toolkit._playlist.get_playlist_info(url)
 
     def urls(self, url: str) -> List[str]:
         """
@@ -215,7 +215,7 @@ class PlaylistGetAPI:
         Returns:
             List of video URLs
         """
-        return self._toolkit._get_playlist_urls_pytubefix(url)
+        return self._toolkit._playlist.get_playlist_urls_pytubefix(url)
 
     def videos(self, url: str,
                limit: Optional[int] = None,
@@ -273,7 +273,7 @@ class CommentsGetAPI:
         order_enum = CommentOrder.RELEVANCE if order == 'relevance' else CommentOrder.TIME
         filters = CommentFilters(order=order_enum, max_results=limit)
 
-        return self._toolkit.comments(url, filters=filters)
+        return self._toolkit._comments.comments(url, filters=filters)
 
     def replies(self, url: str, comment_id: str,
                 limit: int = 50) -> List[Dict[str, Any]]:
@@ -288,7 +288,7 @@ class CommentsGetAPI:
         Returns:
             List of reply dicts
         """
-        return self._toolkit._fetch_comment_replies(
+        return self._toolkit._comments.fetch_replies(
             self._toolkit.extract_video_id(url),
             comment_id,
             max_results=limit
@@ -310,7 +310,7 @@ class CommentsGetAPI:
         from .core.comments import CommentFilters
 
         filters = CommentFilters(search_terms=[query], max_results=limit)
-        result = self._toolkit.comments(url, filters=filters)
+        result = self._toolkit._comments.comments(url, filters=filters)
         return result.comments if hasattr(result, 'comments') else []
 
 
@@ -375,7 +375,7 @@ class GetAPI:
             VideoInfo dataclass with video details
         """
         # Get base info from handler
-        info = self._toolkit._get_video_info_pytubefix(url)
+        info = self._toolkit._get_info.get_video_info_pytubefix(url)
 
         # Map handler dict keys to VideoInfo fields
         video_info = VideoInfo(
@@ -395,31 +395,31 @@ class GetAPI:
         if include:
             if 'chapters' in include:
                 try:
-                    video_info.chapters = self._toolkit.get_video_chapters(url)
+                    video_info.chapters = self._toolkit._get_info.get_video_chapters(url)
                 except Exception:
                     video_info.chapters = []
 
             if 'heatmap' in include:
                 try:
-                    video_info.heatmap = self._toolkit.get_replayed_heatmap(url)
+                    video_info.heatmap = self._toolkit._analyze.get_replayed_heatmap(url)
                 except Exception:
                     video_info.heatmap = []
 
             if 'key_moments' in include:
                 try:
-                    video_info.key_moments = self._toolkit.get_key_moments(url)
+                    video_info.key_moments = self._toolkit._get_info.get_key_moments(url)
                 except Exception:
                     video_info.key_moments = []
 
             if 'transcript' in include:
                 try:
-                    video_info.transcript = self._toolkit._get_transcript(url)
+                    video_info.transcript = self._toolkit._get_info.get_transcript(url)
                 except Exception:
                     video_info.transcript = None
 
             if 'lyrics' in include:
                 try:
-                    video_info.lyrics = self._toolkit._get_lyrics(url)
+                    video_info.lyrics = self._toolkit._get_info.get_lyrics(url)
                 except Exception:
                     video_info.lyrics = None
 
@@ -435,7 +435,7 @@ class GetAPI:
         Returns:
             List of chapter dicts with title, start_seconds, formatted_start
         """
-        return self._toolkit.get_video_chapters(url)
+        return self._toolkit._get_info.get_video_chapters(url)
 
     def key_moments(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -447,7 +447,7 @@ class GetAPI:
         Returns:
             List of key moment dicts
         """
-        return self._toolkit.get_key_moments(url)
+        return self._toolkit._get_info.get_key_moments(url)
 
     def heatmap(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -459,7 +459,7 @@ class GetAPI:
         Returns:
             List of heatmap segments with intensity
         """
-        return self._toolkit.get_replayed_heatmap(url)
+        return self._toolkit._analyze.get_replayed_heatmap(url)
 
     def transcript(self, url: str, lang: str = 'en') -> Optional[str]:
         """
@@ -472,7 +472,7 @@ class GetAPI:
         Returns:
             Transcript text or None
         """
-        return self._toolkit._get_transcript(url)
+        return self._toolkit._get_info.get_transcript(url)
 
     def lyrics(self, url: str) -> Optional[str]:
         """
@@ -484,7 +484,7 @@ class GetAPI:
         Returns:
             Lyrics text or None
         """
-        return self._toolkit._get_lyrics(url)
+        return self._toolkit._get_info.get_lyrics(url)
 
     def captions(self, url: str) -> Dict[str, Any]:
         """
@@ -496,7 +496,7 @@ class GetAPI:
         Returns:
             CaptionResult with available tracks
         """
-        return self._toolkit.captions(url)
+        return self._toolkit._captions.captions(url)
 
     def metadata(self, url: str) -> Dict[str, Any]:
         """
@@ -508,7 +508,7 @@ class GetAPI:
         Returns:
             Rich metadata dict
         """
-        return self._toolkit.get_rich_metadata(url)
+        return self._toolkit._get_info.get_rich_metadata(url)
 
     def keywords(self, url: str) -> List[str]:
         """
@@ -520,7 +520,7 @@ class GetAPI:
         Returns:
             List of keywords/tags
         """
-        info = self._toolkit._get_video_info_pytubefix(url)
+        info = self._toolkit._get_info.get_video_info_pytubefix(url)
         return info.get('keywords', []) or []
 
     def formats(self, url: str) -> Dict[str, Any]:
@@ -533,7 +533,7 @@ class GetAPI:
         Returns:
             Dict with audio and video format options
         """
-        return self._toolkit._get_available_formats_pytubefix(url)
+        return self._toolkit._get_info.get_available_formats_pytubefix(url)
 
     def restriction(self, url: str) -> Dict[str, Any]:
         """
@@ -546,7 +546,7 @@ class GetAPI:
             Dict with age_restricted, is_private, is_unlisted, etc.
         """
         try:
-            info = self._toolkit.get_full_metadata(url)
+            info = self._toolkit._get_info.get_full_metadata(url)
             return {
                 'age_restricted': info.get('age_limit', 0) > 0,
                 'age_limit': info.get('age_limit', 0),
@@ -693,7 +693,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded audio file
         """
-        return self._toolkit.download_audio(
+        return self._toolkit._download.download_audio(
             url,
             format=format,
             output_path=output_path,
@@ -720,7 +720,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded video file
         """
-        return self._toolkit.download_video(
+        return self._toolkit._download.download_video(
             url,
             quality=quality,
             output_path=output_path,
@@ -744,7 +744,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded caption file
         """
-        return self._toolkit.download_captions(
+        return self._toolkit._captions.download_captions(
             url,
             lang=lang,
             format=format,
@@ -818,7 +818,7 @@ class DownloadAPI:
         Returns:
             Dict with download results and summary
         """
-        return self._toolkit.download_playlist_media(
+        return self._toolkit._playlist.download_playlist_media(
             url,
             media_type=type,
             format=format,
@@ -842,7 +842,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.download_short(url, output_path, format, with_audio)
+        return self._toolkit._download.download_short(url, output_path, format, with_audio)
 
     def live(self, url: str,
              output_path: Optional[str] = None,
@@ -860,7 +860,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.download_live_stream(url, output_path, from_start, duration)
+        return self._toolkit._download.download_live_stream(url, output_path, from_start, duration)
 
     def with_sponsorblock(self, url: str,
                           output_path: Optional[str] = None,
@@ -878,7 +878,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.download_with_sponsorblock(url, output_path, action, categories)
+        return self._toolkit._download.download_with_sponsorblock(url, output_path, action, categories)
 
     def with_metadata(self, url: str,
                       output_path: Optional[str] = None,
@@ -898,7 +898,7 @@ class DownloadAPI:
         Returns:
             Path to audio file
         """
-        return self._toolkit.download_audio_with_metadata(
+        return self._toolkit._download.download_audio_with_metadata(
             url, output_path, format, embed_thumbnail, add_metadata
         )
 
@@ -927,7 +927,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file, or None if filtered out
         """
-        return self._toolkit.download_with_filter(url, output_path, match_filter, format)
+        return self._toolkit._download.download_with_filter(url, output_path, match_filter, format)
 
     def with_archive(self, url: str,
                      output_path: Optional[str] = None,
@@ -945,7 +945,7 @@ class DownloadAPI:
         Returns:
             Path to file, or None if already in archive
         """
-        return self._toolkit.download_with_archive(url, output_path, archive_file, format)
+        return self._toolkit._download.download_with_archive(url, output_path, archive_file, format)
 
     def with_cookies(self, url: str,
                      browser: str = 'chrome',
@@ -965,8 +965,8 @@ class DownloadAPI:
             Path to downloaded file
         """
         # Extract cookies and use them for download
-        cookies_file = self._toolkit._extract_cookies_from_browser(browser)
-        return self._toolkit._download_video_with_cookies(
+        cookies_file = self._toolkit._download.extract_cookies_from_browser(browser)
+        return self._toolkit._download.download_video_with_cookies(
             url, output_path=output_path, cookies=cookies_file
         )
 
@@ -992,7 +992,7 @@ class DownloadAPI:
             List of dicts aligned to input order:
             ``{'url', 'success', 'path', 'error'}``.
         """
-        return self._toolkit.download_many(
+        return self._toolkit._download.download_many(
             urls, media_type=media_type, max_workers=max_workers, **kwargs
         )
 
@@ -1082,7 +1082,7 @@ class SearchAPI:
         filters.max_results = max_results
 
         # Use existing advanced_search which returns dict
-        raw_result = self._toolkit.advanced_search(query, filters, max_results)
+        raw_result = self._toolkit._search.advanced_search(query, filters, max_results)
 
         # Convert to SearchResult
         items = []
@@ -1125,11 +1125,11 @@ class SearchAPI:
             List of video results
         """
         if use_api:
-            return self._toolkit._search_videos_api(query, limit)
+            return self._toolkit._search.search_videos_api(query, limit)
 
         # Try pytubefix first, then scrapetube
         try:
-            results = self._toolkit._search_videos_pytubefix(query, limit)
+            results = self._toolkit._search.search_videos_pytubefix(query, limit)
             if results:
                 return results
         except Exception:
@@ -1157,7 +1157,7 @@ class SearchAPI:
         Returns:
             List of channel results
         """
-        results = self._toolkit._advanced_search_native(
+        results = self._toolkit._search.advanced_search_native(
             query, result_type='channel', limit=limit
         )
         return results.get('channels', [])
@@ -1174,7 +1174,7 @@ class SearchAPI:
         Returns:
             List of playlist results
         """
-        results = self._toolkit._advanced_search_native(
+        results = self._toolkit._search.advanced_search_native(
             query, result_type='playlist', limit=limit
         )
         return results.get('playlists', [])
@@ -1201,7 +1201,7 @@ class SearchAPI:
         Returns:
             Dict with videos, shorts, channels, playlists, completion_suggestions
         """
-        return self._toolkit.search_with_filters(
+        return self._toolkit._search.search_with_filters(
             query=query,
             duration=duration,
             upload_date=upload_date,
@@ -1221,7 +1221,7 @@ class SearchAPI:
         Returns:
             List of suggested queries
         """
-        return self._toolkit._get_search_suggestions(query)
+        return self._toolkit._search.get_search_suggestions(query)
 
     @property
     def trending(self) -> 'TrendingSearchAPI':
@@ -1241,7 +1241,7 @@ class SearchAPI:
         Returns:
             List of category dictionaries with id, title, assignable
         """
-        return self._toolkit.get_video_categories(region, language)
+        return self._toolkit._search.get_video_categories(region, language)
 
     def regions(self, display_language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1253,7 +1253,7 @@ class SearchAPI:
         Returns:
             List of region dictionaries with code and name
         """
-        return self._toolkit.get_supported_regions(display_language)
+        return self._toolkit._system.get_supported_regions(display_language)
 
     def languages(self, display_language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1265,7 +1265,7 @@ class SearchAPI:
         Returns:
             List of language dictionaries with code and name
         """
-        return self._toolkit.get_supported_languages(display_language)
+        return self._toolkit._system.get_supported_languages(display_language)
 
 
 class TrendingSearchAPI:
@@ -1293,7 +1293,7 @@ class TrendingSearchAPI:
         Returns:
             Dictionary with trending videos
         """
-        return self._toolkit.get_trending_videos(region, category, max_results)
+        return self._toolkit._search.get_trending_videos(region, category, max_results)
 
     def by_category(self, region: str = 'US',
                     language: str = 'en') -> Dict[str, List[Dict[str, Any]]]:
@@ -1307,7 +1307,7 @@ class TrendingSearchAPI:
         Returns:
             Dictionary mapping category names to trending videos
         """
-        return self._toolkit.get_trending_by_category(region, language)
+        return self._toolkit._search.get_trending_by_category(region, language)
 
 
 # =============================================================================
@@ -1357,7 +1357,7 @@ class AnalyzeAPI:
         Returns:
             Dictionary with comprehensive metadata
         """
-        return self._toolkit.get_full_metadata(url)
+        return self._toolkit._get_info.get_full_metadata(url)
 
     def engagement(self, url: str) -> Dict[str, Any]:
         """
@@ -1371,12 +1371,12 @@ class AnalyzeAPI:
         """
         result = {}
         try:
-            result['heatmap'] = self._toolkit.get_replayed_heatmap(url)
+            result['heatmap'] = self._toolkit._analyze.get_replayed_heatmap(url)
         except Exception:
             result['heatmap'] = []
 
         try:
-            result['key_moments'] = self._toolkit.get_key_moments(url)
+            result['key_moments'] = self._toolkit._get_info.get_key_moments(url)
         except Exception:
             result['key_moments'] = []
 
@@ -1400,7 +1400,7 @@ class AnalyzeAPI:
         order = CommentOrder.RELEVANCE if sort == 'relevance' else CommentOrder.TIME
         filters = CommentFilters(order=order, max_results=max_comments)
 
-        return self._toolkit.comments(url, filters=filters)
+        return self._toolkit._comments.comments(url, filters=filters)
 
     def captions(self, url: str) -> Dict[str, Any]:
         """
@@ -1412,7 +1412,7 @@ class AnalyzeAPI:
         Returns:
             CaptionResult with available tracks and analytics
         """
-        return self._toolkit.captions(url)
+        return self._toolkit._captions.captions(url)
 
     def sponsorblock(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -1429,7 +1429,7 @@ class AnalyzeAPI:
         Returns:
             List of segment dictionaries
         """
-        return self._toolkit.get_sponsorblock_segments(url)
+        return self._toolkit._analyze.get_sponsorblock_segments(url)
 
     def channel(self, channel: str) -> Dict[str, Any]:
         """
@@ -1445,13 +1445,13 @@ class AnalyzeAPI:
         try:
             # Extract channel ID if needed
             if channel.startswith('@'):
-                return self._toolkit.get_channel_info_full(handle=channel)
+                return self._toolkit._channel.get_channel_info_full(handle=channel)
             elif channel.startswith('UC'):
-                return self._toolkit.get_channel_info_full(channel_id=channel)
+                return self._toolkit._channel.get_channel_info_full(channel_id=channel)
             else:
-                return self._toolkit.get_channel_info(channel)
+                return self._toolkit._channel.get_channel_info(channel)
         except Exception:
-            return self._toolkit.get_channel_info(channel)
+            return self._toolkit._channel.get_channel_info(channel)
 
     def filesize(self, url: str) -> Dict[str, Any]:
         """
@@ -1463,7 +1463,7 @@ class AnalyzeAPI:
         Returns:
             Dict with filesize info for best audio/video streams
         """
-        return self._toolkit._get_filesize_preview(url)
+        return self._toolkit._download.get_filesize_preview(url)
 
 
 # =============================================================================
@@ -1483,7 +1483,7 @@ class LiveStreamSubAPI:
         Returns:
             Dict with is_live, was_live, live_status, release_timestamp
         """
-        return self._toolkit.get_live_status(url)
+        return self._toolkit._analyze.get_live_status(url)
 
     def is_live(self, url: str) -> bool:
         """
@@ -1513,7 +1513,7 @@ class LiveStreamSubAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.download_live_stream(url, output_path, from_start, duration)
+        return self._toolkit._download.download_live_stream(url, output_path, from_start, duration)
 
 
 class StreamAPI:
@@ -1545,7 +1545,7 @@ class StreamAPI:
         Returns:
             Bytes containing the stream data
         """
-        return self._toolkit._stream_to_buffer(url, stream_type, quality)
+        return self._toolkit._download.stream_to_buffer(url, stream_type, quality)
 
     def audio(self, url: str, quality: str = 'best') -> bytes:
         """
@@ -1558,7 +1558,7 @@ class StreamAPI:
         Returns:
             Bytes containing the audio data
         """
-        return self._toolkit._stream_to_buffer(url, 'audio', quality)
+        return self._toolkit._download.stream_to_buffer(url, 'audio', quality)
 
     def video(self, url: str, quality: str = 'best') -> bytes:
         """
@@ -1571,5 +1571,5 @@ class StreamAPI:
         Returns:
             Bytes containing the video data
         """
-        return self._toolkit._stream_to_buffer(url, 'video', quality)
+        return self._toolkit._download.stream_to_buffer(url, 'video', quality)
 

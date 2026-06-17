@@ -132,7 +132,7 @@ class DownloadService:
 
         try:
             if type == 'audio':
-                file_path = self._toolkit.download_audio(
+                file_path = self.download_audio(
                     url,
                     format=format,
                     output_path=output_path,
@@ -143,7 +143,7 @@ class DownloadService:
                 result_format = format
                 result_quality = bitrate
             elif type == 'video':
-                file_path = self._toolkit.download_video(
+                file_path = self.download_video(
                     url,
                     quality=quality,
                     output_path=output_path,
@@ -215,9 +215,9 @@ class DownloadService:
         def _one(url):
             try:
                 if media_type == 'audio':
-                    path = self._toolkit.download_audio(url, format=format, **kwargs)
+                    path = self.download_audio(url, format=format, **kwargs)
                 elif media_type == 'video':
-                    path = self._toolkit.download_video(url, quality=quality, **kwargs)
+                    path = self.download_video(url, quality=quality, **kwargs)
                 else:
                     raise ValueError(
                         f"Invalid media_type: {media_type}. Must be 'audio' or 'video'"

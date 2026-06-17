@@ -64,7 +64,7 @@ class TestGetVideoAPI:
         toolkit = YouTubeToolkit()
 
         # Mock the underlying get_video_info method
-        with patch.object(toolkit, 'get_video_info') as mock:
+        with patch.object(toolkit._get_info, 'get_video_info') as mock:
             mock.return_value = {
                 'title': 'Test Video',
                 'duration': 180,
@@ -98,7 +98,7 @@ class TestDownloadAPI:
         toolkit = YouTubeToolkit()
 
         # Mock the underlying download_audio method
-        with patch.object(toolkit, 'download_audio') as mock:
+        with patch.object(toolkit._download, 'download_audio') as mock:
             mock.return_value = '/tmp/test.wav'
 
             result = toolkit.download(
@@ -118,7 +118,7 @@ class TestDownloadAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'download_video') as mock:
+        with patch.object(toolkit._download, 'download_video') as mock:
             mock.return_value = '/tmp/test.mp4'
 
             result = toolkit.download(
@@ -138,7 +138,7 @@ class TestDownloadAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'download_audio') as mock:
+        with patch.object(toolkit._download, 'download_audio') as mock:
             mock.side_effect = Exception("Network error")
 
             result = toolkit.download(
@@ -170,7 +170,7 @@ class TestDownloadAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'download_video') as mock:
+        with patch.object(toolkit._download, 'download_video') as mock:
             mock.return_value = '/tmp/test.mp4'
 
             # Test 720p
@@ -192,7 +192,7 @@ class TestDownloadAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'download_video') as mock:
+        with patch.object(toolkit._download, 'download_video') as mock:
             mock.return_value = '/tmp/test_1080p.mp4'
 
             result = toolkit.download(
@@ -211,7 +211,7 @@ class TestDownloadAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'download_video') as mock:
+        with patch.object(toolkit._download, 'download_video') as mock:
             mock.return_value = '/tmp/test_best.mp4'
 
             result = toolkit.download(
@@ -230,7 +230,7 @@ class TestDownloadAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'download_audio') as mock:
+        with patch.object(toolkit._download, 'download_audio') as mock:
             mock.return_value = '/tmp/test.mp3'
 
             result = toolkit.download(
@@ -257,7 +257,7 @@ class TestSearchAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'advanced_search') as mock:
+        with patch.object(toolkit._search, 'advanced_search') as mock:
             mock.return_value = {
                 'items': [
                     {'video_id': 'abc', 'title': 'Video 1'},
@@ -280,7 +280,7 @@ class TestSearchAPI:
         toolkit = YouTubeToolkit()
         filters = SearchFilters(video_duration='short', order='viewCount')
 
-        with patch.object(toolkit, 'advanced_search') as mock:
+        with patch.object(toolkit._search, 'advanced_search') as mock:
             mock.return_value = {'items': [], 'total_results': 0}
 
             result = toolkit.search('test', filters=filters)
@@ -297,7 +297,7 @@ class TestCommentsAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'advanced_get_comments') as mock:
+        with patch.object(toolkit._comments, 'advanced_get_comments') as mock:
             mock.return_value = {
                 'comments': [],
                 'total_results': 0,
@@ -319,7 +319,7 @@ class TestCaptionsAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'list_captions') as mock:
+        with patch.object(toolkit._captions, 'list_captions') as mock:
             mock.return_value = {'tracks': [], 'quota_cost': 0}
 
         with patch.object(toolkit, 'extract_video_id') as mock_id:
@@ -339,7 +339,7 @@ class TestPlaylistAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit, 'get_playlist_urls') as mock:
+        with patch.object(toolkit._playlist, 'get_playlist_urls') as mock:
             mock.return_value = [
                 'https://youtube.com/watch?v=abc',
                 'https://youtube.com/watch?v=def',

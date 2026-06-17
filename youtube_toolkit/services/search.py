@@ -110,7 +110,7 @@ class SearchService:
 
         # Fallback to basic search methods
         print("🔄 Falling back to basic search methods...")
-        basic_results = self._toolkit.search_videos(query, filters.__dict__ if filters else None, max_results)
+        basic_results = self.search_videos(query, filters.__dict__ if filters else None, max_results)
 
         # Convert basic results to advanced format
         from ..core.search import SearchResult, SearchResultItem, Thumbnails, Thumbnail
@@ -168,7 +168,7 @@ class SearchService:
             order="viewCount"  # Sort by current viewers for live content
         )
 
-        return self._toolkit.advanced_search(query, filters, max_results)
+        return self.advanced_search(query, filters, max_results)
 
     def search_by_category(self, query: str, category_name: str, max_results: int = 20) -> Dict[str, Any]:
         from ..core.search import SearchFilters, YOUTUBE_CATEGORIES
@@ -183,7 +183,7 @@ class SearchService:
             video_category_id=category_id
         )
 
-        return self._toolkit.advanced_search(query, filters, max_results)
+        return self.advanced_search(query, filters, max_results)
 
     def search_sponsored_content(self, query: str, max_results: int = 20) -> Dict[str, Any]:
         from ..core.search import SearchFilters
@@ -193,7 +193,7 @@ class SearchService:
             video_paid_product_placement="true"
         )
 
-        return self._toolkit.advanced_search(query, filters, max_results)
+        return self.advanced_search(query, filters, max_results)
 
     def search_with_boolean_query(self, boolean_query: str, filters: Optional[Dict] = None, max_results: int = 20) -> Dict[str, Any]:
         from ..core.search import SearchFilters, BooleanSearchQuery
@@ -210,7 +210,7 @@ class SearchService:
         else:
             search_filters = filters
 
-        return self._toolkit.advanced_search(processed_query, search_filters, max_results)
+        return self.advanced_search(processed_query, search_filters, max_results)
 
     def search_paginated(self, query: str, filters: Optional[Dict] = None,
                         page_token: Optional[str] = None, max_results: int = 20) -> Dict[str, Any]:
@@ -227,7 +227,7 @@ class SearchService:
         search_filters.page_token = page_token
         search_filters.max_results = max_results
 
-        return self._toolkit.advanced_search(query, search_filters, max_results)
+        return self.advanced_search(query, search_filters, max_results)
 
     def get_search_categories(self) -> Dict[str, str]:
         from ..core.search import YOUTUBE_CATEGORIES
@@ -271,7 +271,7 @@ class SearchService:
         filters.max_results = max_results
 
         # Use existing advanced_search which returns dict
-        raw_result = self._toolkit.advanced_search(query, filters, max_results)
+        raw_result = self.advanced_search(query, filters, max_results)
 
         # If already a SearchResult dict format, convert items
         items = []

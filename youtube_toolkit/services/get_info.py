@@ -54,7 +54,7 @@ class GetInfoService:
 
     def get_video(self, url: str) -> VideoInfo:
         # Get raw dict from existing method
-        data = self._toolkit.get_video_info(url)
+        data = self.get_video_info(url)
 
         # Convert to VideoInfo dataclass
         return VideoInfo(

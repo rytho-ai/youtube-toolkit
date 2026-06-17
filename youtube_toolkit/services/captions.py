@@ -102,7 +102,7 @@ class CaptionsService:
 
     def get_captions_in_format(self, url: str, language_code: str = 'en',
                               format: str = 'vtt') -> str:
-        result = self._toolkit.advanced_download_captions(url, language_code, format)
+        result = self.advanced_download_captions(url, language_code, format)
 
         if result.get('success'):
             with open(result['output_path'], 'r', encoding='utf-8') as f:
@@ -114,7 +114,7 @@ class CaptionsService:
         from ..core.captions import CaptionFormatConverter
 
         # Download captions
-        result = self._toolkit.advanced_download_captions(url, language_code, 'srt')
+        result = self.advanced_download_captions(url, language_code, 'srt')
 
         if not result.get('success'):
             raise RuntimeError(f"Failed to download captions: {result.get('error')}")
@@ -147,7 +147,7 @@ class CaptionsService:
         return matching_cues
 
     def get_caption_analytics(self, url: str, language_code: str = 'en') -> Dict[str, Any]:
-        result = self._toolkit.advanced_download_captions(url, language_code, 'srt')
+        result = self.advanced_download_captions(url, language_code, 'srt')
 
         if not result.get('success'):
             raise RuntimeError(f"Failed to download captions: {result.get('error')}")
@@ -162,7 +162,7 @@ class CaptionsService:
         from datetime import datetime
 
         # Get caption data
-        result = self._toolkit.advanced_download_captions(url, language_code, 'srt')
+        result = self.advanced_download_captions(url, language_code, 'srt')
 
         if not result.get('success'):
             raise RuntimeError(f"Failed to download captions: {result.get('error')}")
@@ -215,7 +215,7 @@ class CaptionsService:
 
         elif format.lower() in ['srt', 'vtt', 'txt']:
             # Export in caption format
-            caption_result = self._toolkit.advanced_download_captions(url, language_code, format, output_path)
+            caption_result = self.advanced_download_captions(url, language_code, format, output_path)
             if not caption_result.get('success'):
                 raise RuntimeError(f"Failed to export captions: {caption_result.get('error')}")
             output_path = caption_result['output_path']
@@ -226,7 +226,7 @@ class CaptionsService:
         return output_path
 
     def get_best_caption_track(self, url: str, preferred_language: str = 'en') -> Optional[Dict[str, Any]]:
-        caption_list = self._toolkit.list_captions(url)
+        caption_list = self.list_captions(url)
         tracks = caption_list.get('tracks', [])
 
         if not tracks:
@@ -255,7 +255,7 @@ class CaptionsService:
     def captions(self, url: str, language: str = 'en',
                  filters: Optional[CaptionFilters] = None) -> CaptionResult:
         # Use existing list_captions
-        raw_result = self._toolkit.list_captions(url, filters)
+        raw_result = self.list_captions(url, filters)
 
         # Convert to CaptionResult
         tracks = []

@@ -63,7 +63,7 @@ class PlaylistService:
                 'description': 'Playlist downloaded with YouTube Toolkit'
             }
 
-        urls = self._toolkit.get_playlist_urls(playlist_url)
+        urls = self.get_playlist_urls(playlist_url)
         if not urls:
             return {'success': False, 'error': 'No videos found in playlist'}
 
@@ -150,19 +150,19 @@ class PlaylistService:
                 print(f"📥 [{i}/{len(urls)}] Processing...")
 
                 # Get video info
-                video_info = self._toolkit.get_video_info(url)
+                video_info = self._toolkit._get_info.get_video_info(url)
                 video_title = self._toolkit._sanitize_filename(video_info['title'])
 
                 # Download main media
                 if media_type == 'audio':
-                    media_path = self._toolkit.download_audio(
+                    media_path = self._toolkit._download.download_audio(
                         url,
                         format=format,
                         output_path=os.path.join(folders['audio'], f"{video_title}.{format}"),
                         bitrate=audio_bitrate
                     )
                 else:  # video
-                    media_path = self._toolkit.download_video(
+                    media_path = self._toolkit._download.download_video(
                         url,
                         quality=quality,
                         output_path=os.path.join(folders['video'], f"{video_title}.mp4")
@@ -172,7 +172,7 @@ class PlaylistService:
                 caption_path = None
                 if include_captions:
                     try:
-                        caption_path = self._toolkit.download_captions(
+                        caption_path = self._toolkit._captions.download_captions(
                             url,
                             language_code='en',
                             output_path=os.path.join(folders['captions'], f"{video_title}_en.txt")
@@ -243,19 +243,19 @@ class PlaylistService:
             print(f"📥 [{i}/{total}] Processing...")
 
             # Get video info
-            video_info = self._toolkit.get_video_info(url)
+            video_info = self._toolkit._get_info.get_video_info(url)
             video_title = self._toolkit._sanitize_filename(video_info['title'])
 
             # Download main media
             if media_type == 'audio':
-                media_path = self._toolkit.download_audio(
+                media_path = self._toolkit._download.download_audio(
                     url,
                     format=format,
                     output_path=os.path.join(folders['audio'], f"{video_title}.{format}"),
                     bitrate=audio_bitrate
                 )
             else:  # video
-                media_path = self._toolkit.download_video(
+                media_path = self._toolkit._download.download_video(
                     url,
                     quality=quality,
                     output_path=os.path.join(folders['video'], f"{video_title}.mp4")
@@ -265,7 +265,7 @@ class PlaylistService:
             caption_path = None
             if include_captions:
                 try:
-                    caption_path = self._toolkit.download_captions(
+                    caption_path = self._toolkit._captions.download_captions(
                         url,
                         language_code='en',
                         output_path=os.path.join(folders['captions'], f"{video_title}_en.txt")
@@ -405,7 +405,7 @@ class PlaylistService:
         )
 
     def playlist(self, url: str) -> List[str]:
-        return self._toolkit.get_playlist_urls(url)
+        return self.get_playlist_urls(url)
 
     def get_playlist_urls_pytubefix(self, url: str) -> List[str]:
         return self._toolkit.pytubefix.get_playlist_urls(url)
