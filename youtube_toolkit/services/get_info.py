@@ -107,3 +107,15 @@ class GetInfoService:
 
     def get_key_moments(self, url: str) -> List[Dict[str, Any]]:
         return self._toolkit.pytubefix.get_key_moments(url)
+
+    def get_video_info_pytubefix(self, url: str) -> Dict[str, Any]:
+        return self._toolkit.pytubefix.get_video_info(url)
+
+    def get_available_formats_pytubefix(self, url: str) -> Dict[str, Any]:
+        return self._toolkit.pytubefix.get_available_formats(url)
+
+    def get_transcript(self, url: str) -> Any:
+        return self._toolkit.ytdlp.get_transcript(url)
+
+    def get_lyrics(self, url: str) -> Any:
+        return self._toolkit.ytdlp.get_lyrics(url)

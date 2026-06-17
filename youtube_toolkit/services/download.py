@@ -266,3 +266,19 @@ class DownloadService:
 
     def get_supported_browsers(self) -> List[str]:
         return ['chrome', 'firefox', 'safari', 'edge', 'opera', 'brave', 'chromium', 'vivaldi']
+
+    def extract_cookies_from_browser(self, browser: str = 'chrome') -> str:
+        return self._toolkit.yt_dlp.extract_cookies_from_browser(browser)
+
+    def download_video_with_cookies(self, url: str, output_path: Optional[str] = None,
+                                    cookies: Optional[str] = None) -> str:
+        return self._toolkit.yt_dlp.download_video(
+            url, output_path=output_path, cookies=cookies
+        )
+
+    def stream_to_buffer(self, url: str, stream_type: str = 'audio',
+                         quality: str = 'best') -> bytes:
+        return self._toolkit.pytubefix.stream_to_buffer(url, stream_type, quality)
+
+    def get_filesize_preview(self, url: str) -> Dict[str, Any]:
+        return self._toolkit.pytubefix.get_filesize_preview(url)

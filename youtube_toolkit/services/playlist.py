@@ -243,3 +243,6 @@ class PlaylistService:
 
     def playlist(self, url: str) -> List[str]:
         return self._toolkit.get_playlist_urls(url)
+
+    def get_playlist_urls_pytubefix(self, url: str) -> List[str]:
+        return self._toolkit.pytubefix.get_playlist_urls(url)

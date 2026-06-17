@@ -219,3 +219,11 @@ class CommentsService:
     def get_comments_raw(self, url: str, max_comments: int = 100,
                          sort: str = 'top') -> List[Dict[str, Any]]:
         return self._toolkit.yt_dlp.get_comments(url, max_comments, sort)
+
+    def fetch_replies(self, video_id: str, comment_id: str,
+                      max_results: int = 50) -> List[Dict[str, Any]]:
+        return self._toolkit.youtube_api.fetch_replies(
+            video_id,
+            comment_id,
+            max_results=max_results
+        )

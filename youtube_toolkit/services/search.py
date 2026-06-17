@@ -317,3 +317,18 @@ class SearchService:
     def get_trending_by_category(self, region_code: str = 'US',
                                  language: str = 'en') -> Dict[str, List[Dict[str, Any]]]:
         return self._toolkit.youtube_api.get_trending_by_category(region_code, language)
+
+    def search_videos_api(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        return self._toolkit.youtube_api.search_videos(query, max_results=limit)
+
+    def search_videos_pytubefix(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        return self._toolkit.pytubefix.search_videos(query, max_results=limit)
+
+    def advanced_search_native(self, query: str, result_type: str = 'video',
+                               limit: int = 20) -> Dict[str, Any]:
+        return self._toolkit.pytubefix.advanced_search(
+            query, result_type=result_type, max_results=limit
+        )
+
+    def get_search_suggestions(self, query: str) -> List[str]:
+        return self._toolkit.pytubefix.get_search_suggestions(query)
