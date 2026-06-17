@@ -246,9 +246,259 @@ class PyTubeFixHandler:
             import shutil
             shutil.copy2(input_path, output_path)
 
+    def _select_video_streams(self, yt, quality, progress_callback):
+        """Select the best video (and audio) streams for the requested quality.
+
+        Returns a (video_stream, audio_stream) tuple; audio_stream is None when a
+        progressive stream (with built-in audio) is chosen.
+        """
+        video_stream = None
+        audio_stream = None
+
+        if quality == 'best':
+            # Try to get the highest resolution video stream (without audio)
+            video_streams = (
+                yt.streams.filter(file_extension="mp4", only_video=True,
+                                res=["1080p", "720p", "360p", "240p", "144p"])
+                .order_by("resolution")
+                .desc()
+            )
+            video_stream = video_streams.first()
+
+            # If no video-only streams, try progressive streams
+            if not video_stream:
+                progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
+                if progressive_streams:
+                    video_stream = progressive_streams.order_by("resolution").desc().first()
+                    audio_stream = None  # Progressive streams have audio built-in
+        else:
+            # Try specific resolution first (video-only streams)
+            video_streams = yt.streams.filter(file_extension="mp4", only_video=True, res=quality)
+            video_stream = video_streams.first()
+
+            # If specific resolution not found, try similar or lower resolutions
+            if not video_stream:
+                if progress_callback:
+                    print(f"Resolution {quality} not available, trying similar resolutions...")
+
+                # Try to find the closest available resolution
+                if quality == '720p':
+                    # Try 720p, then 1080p, then 480p
+                    for res in ['720p', '1080p', '480p']:
+                        video_streams = yt.streams.filter(file_extension="mp4", only_video=True, res=res)
+                        if video_streams:
+                            video_stream = video_streams.first()
+                            if progress_callback:
+                                print(f"   Using {res} instead of {quality}")
+                            break
+                elif quality == '1080p':
+                    # Try 1080p, then 720p, then 1440p
+                    for res in ['1080p', '720p', '1440p']:
+                        video_streams = yt.streams.filter(file_extension="mp4", only_video=True, res=res)
+                        if video_streams:
+                            video_stream = video_streams.first()
+                            if progress_callback:
+                                print(f"   Using {res} instead of {quality}")
+                            break
+
+            # If still no video-only streams, try progressive streams as last resort
+            if not video_stream:
+                if progress_callback:
+                    print(f"No video-only streams found, trying progressive streams...")
+                progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
+                if quality != 'best':
+                    progressive_streams = progressive_streams.filter(res=quality)
+
+                if progressive_streams:
+                    video_stream = progressive_streams.order_by("resolution").desc().first()
+                    audio_stream = None  # Progressive streams have audio built-in
+                    if progress_callback:
+                        print(f"   Using progressive stream: {video_stream.resolution}")
+                else:
+                    # Final fallback: best available progressive stream
+                    progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
+                    if progressive_streams:
+                        video_stream = progressive_streams.order_by("resolution").desc().first()
+                        audio_stream = None
+                        if progress_callback:
+                            print(f"   Using best progressive stream: {video_stream.resolution}")
+
+        # Get audio stream only if we need separate audio
+        if video_stream and (not hasattr(video_stream, 'progressive') or not video_stream.progressive):
+            audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
+
+        return video_stream, audio_stream
+
+    def _resolve_output_paths(self, output_path, title):
+        """Resolve the final output directory, filename and combined file path.
+
+        Handles the case where ``output_path`` is a directory, a full file path,
+        or ``None`` (defaults to the current directory with the video title).
+        """
+        # Default save path for final combined file
+        if output_path is None:
+            output_path = os.path.join(os.getcwd(), f"{title}.mp4")
+
+        # Handle case where output_path is a directory (fix for FFmpeg format error)
+        if os.path.isdir(output_path) or output_path.endswith('/') or output_path.endswith('\\'):
+            # output_path is a directory, create filename inside it
+            out_dir = output_path
+            filename = f"{title}.mp4"
+            combined_path = os.path.join(out_dir, filename)
+        else:
+            # output_path includes filename
+            out_dir, filename = os.path.split(output_path)
+            if not filename:  # Edge case: path ends with separator
+                out_dir = output_path
+                filename = f"{title}.mp4"
+            combined_path = os.path.join(out_dir, filename)
+
+        return out_dir, filename, combined_path
+
+    def _combine_video_audio(self, yt, quality, video_path, audio_path,
+                             combined_path, out_dir, filename, progress_callback,
+                             VideoFileClip, AudioFileClip):
+        """Combine separate video and audio streams into ``combined_path``.
+
+        On MoviePy failure, falls back to downloading a progressive stream
+        directly to the final location. Returns True when the fallback path was
+        taken (caller should return immediately), False on normal combination.
+        """
+        # Combine video and audio using MoviePy
+        if progress_callback:
+            print("Combining video and audio...")
+
+        try:
+            # Load clips and create combined video
+            video_clip = VideoFileClip(video_path)
+            audio_clip = AudioFileClip(audio_path)
+            video_with_audio = video_clip.with_audio(audio_clip)
+
+            # Use compatible parameters for MoviePy
+            try:
+                # Try with newer MoviePy version parameters
+                if progress_callback:
+                    print("Using enhanced encoding settings...")
+
+                # Build parameters dynamically based on MoviePy version
+                write_params = {
+                    'codec': "libx264",
+                    'audio_codec': "aac",
+                    'preset': "ultrafast",
+                    'threads': 4
+                }
+
+                # Add verbose and logger only if supported
+                try:
+                    # Test if verbose parameter is supported
+                    import inspect
+                    sig = inspect.signature(video_with_audio.write_videofile)
+                    if 'verbose' in sig.parameters:
+                        write_params['verbose'] = False
+                    if 'logger' in sig.parameters:
+                        write_params['logger'] = None
+                except:
+                    pass
+
+                video_with_audio.write_videofile(combined_path, **write_params)
+            except TypeError as e:
+                # Fallback for older MoviePy versions
+                if progress_callback:
+                    print("Falling back to standard encoding settings...")
+                try:
+                    # Build parameters dynamically based on MoviePy version
+                    write_params = {
+                        'codec': "libx264",
+                        'audio_codec': "aac",
+                        'preset': "ultrafast"
+                    }
+
+                    # Add verbose and logger only if supported
+                    try:
+                        import inspect
+                        sig = inspect.signature(video_with_audio.write_videofile)
+                        if 'verbose' in sig.parameters:
+                            write_params['verbose'] = False
+                        if 'logger' in sig.parameters:
+                            write_params['logger'] = None
+                    except:
+                        pass
+
+                    video_with_audio.write_videofile(combined_path, **write_params)
+                except TypeError:
+                    # Final fallback with minimal parameters
+                    if progress_callback:
+                        print("Using minimal encoding settings...")
+
+                    # Build minimal parameters
+                    write_params = {}
+
+                    # Add verbose and logger only if supported
+                    try:
+                        import inspect
+                        sig = inspect.signature(video_with_audio.write_videofile)
+                        if 'verbose' in sig.parameters:
+                            write_params['verbose'] = False
+                        if 'logger' in sig.parameters:
+                            write_params['logger'] = None
+                    except:
+                        pass
+
+                    video_with_audio.write_videofile(combined_path, **write_params)
+
+            if progress_callback:
+                print("✅ Video and audio combined successfully!")
+
+            # Clean up clips
+            video_clip.close()
+            audio_clip.close()
+            video_with_audio.close()
+
+        except Exception as e:
+            # Clean up partial files if combination fails
+            if os.path.exists(combined_path):
+                try:
+                    os.remove(combined_path)
+                except:
+                    pass
+
+            # Fallback: download just the video stream without audio
+            if progress_callback:
+                print(f"⚠️  Audio combination failed: {e}")
+                print("📹 Downloading video stream only (without audio)...")
+
+            try:
+                # Get progressive stream (video + audio combined)
+                progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
+                if quality == 'best':
+                    progressive_streams = progressive_streams.order_by("resolution").desc()
+                else:
+                    progressive_streams = progressive_streams.filter(res=quality)
+
+                progressive_stream = progressive_streams.first()
+
+                if progressive_stream:
+                    if progress_callback:
+                        print(f"Downloading progressive stream: {progressive_stream.resolution}")
+
+                    # Download directly to final location
+                    progressive_stream.download(output_path=out_dir, filename=filename)
+
+                    if progress_callback:
+                        print("✅ Progressive video downloaded successfully!")
+
+                    return True
+                else:
+                    raise RuntimeError("No suitable progressive streams available for fallback")
+
+            except Exception as fallback_error:
+                raise RuntimeError(f"Both advanced processing and fallback failed. Advanced error: {e}. Fallback error: {fallback_error}")
+
+        return False
+
     @anti_detection_interceptor
     @rate_limit(max_requests=2, window_minutes=1)
-    def download_video(self, url: str, output_path: str = None, 
+    def download_video(self, url: str, output_path: str = None,
                        quality: str = 'best', progress_callback: bool = True) -> str:
         """
         Downloads the video from YouTube with advanced processing.
@@ -289,81 +539,8 @@ class PyTubeFixHandler:
             os.makedirs(output_folder, exist_ok=True)
             
             # Get video streams based on quality preference with fallback
-            video_stream = None
-            audio_stream = None
-            
-            if quality == 'best':
-                # Try to get the highest resolution video stream (without audio)
-                video_streams = (
-                    yt.streams.filter(file_extension="mp4", only_video=True, 
-                                    res=["1080p", "720p", "360p", "240p", "144p"])
-                    .order_by("resolution")
-                    .desc()
-                )
-                video_stream = video_streams.first()
-                
-                # If no video-only streams, try progressive streams
-                if not video_stream:
-                    progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
-                    if progressive_streams:
-                        video_stream = progressive_streams.order_by("resolution").desc().first()
-                        audio_stream = None  # Progressive streams have audio built-in
-            else:
-                # Try specific resolution first (video-only streams)
-                video_streams = yt.streams.filter(file_extension="mp4", only_video=True, res=quality)
-                video_stream = video_streams.first()
-                
-                # If specific resolution not found, try similar or lower resolutions
-                if not video_stream:
-                    if progress_callback:
-                        print(f"Resolution {quality} not available, trying similar resolutions...")
-                    
-                    # Try to find the closest available resolution
-                    if quality == '720p':
-                        # Try 720p, then 1080p, then 480p
-                        for res in ['720p', '1080p', '480p']:
-                            video_streams = yt.streams.filter(file_extension="mp4", only_video=True, res=res)
-                            if video_streams:
-                                video_stream = video_streams.first()
-                                if progress_callback:
-                                    print(f"   Using {res} instead of {quality}")
-                                break
-                    elif quality == '1080p':
-                        # Try 1080p, then 720p, then 1440p
-                        for res in ['1080p', '720p', '1440p']:
-                            video_streams = yt.streams.filter(file_extension="mp4", only_video=True, res=res)
-                            if video_streams:
-                                video_stream = video_streams.first()
-                                if progress_callback:
-                                    print(f"   Using {res} instead of {quality}")
-                                break
-                
-                # If still no video-only streams, try progressive streams as last resort
-                if not video_stream:
-                    if progress_callback:
-                        print(f"No video-only streams found, trying progressive streams...")
-                    progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
-                    if quality != 'best':
-                        progressive_streams = progressive_streams.filter(res=quality)
-                    
-                    if progressive_streams:
-                        video_stream = progressive_streams.order_by("resolution").desc().first()
-                        audio_stream = None  # Progressive streams have audio built-in
-                        if progress_callback:
-                            print(f"   Using progressive stream: {video_stream.resolution}")
-                    else:
-                        # Final fallback: best available progressive stream
-                        progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
-                        if progressive_streams:
-                            video_stream = progressive_streams.order_by("resolution").desc().first()
-                            audio_stream = None
-                            if progress_callback:
-                                print(f"   Using best progressive stream: {video_stream.resolution}")
-            
-            # Get audio stream only if we need separate audio
-            if video_stream and (not hasattr(video_stream, 'progressive') or not video_stream.progressive):
-                audio_stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
-            
+            video_stream, audio_stream = self._select_video_streams(yt, quality, progress_callback)
+
             if not video_stream:
                 raise RuntimeError("No suitable video streams found.")
             
@@ -394,157 +571,21 @@ class PyTubeFixHandler:
                 video_path = video_stream.download(output_path=output_folder, filename="temp_video.mp4")
                 audio_path = None
             
-            # Default save path for final combined file
-            if output_path is None:
-                output_path = os.path.join(os.getcwd(), f"{title}.mp4")
-            
-            # Handle case where output_path is a directory (fix for FFmpeg format error)
-            if os.path.isdir(output_path) or output_path.endswith('/') or output_path.endswith('\\'):
-                # output_path is a directory, create filename inside it
-                out_dir = output_path
-                filename = f"{title}.mp4"
-                combined_path = os.path.join(out_dir, filename)
-            else:
-                # output_path includes filename
-                out_dir, filename = os.path.split(output_path)
-                if not filename:  # Edge case: path ends with separator
-                    out_dir = output_path
-                    filename = f"{title}.mp4"
-                combined_path = os.path.join(out_dir, filename)
-            
+            # Resolve final output directory, filename and combined path
+            out_dir, filename, combined_path = self._resolve_output_paths(output_path, title)
+
             os.makedirs(out_dir, exist_ok=True)
             
             # Process video based on stream type
             if audio_stream:
-                # Combine video and audio using MoviePy
-                if progress_callback:
-                    print("Combining video and audio...")
-                
-                try:
-                    # Load clips and create combined video
-                    video_clip = VideoFileClip(video_path)
-                    audio_clip = AudioFileClip(audio_path)
-                    video_with_audio = video_clip.with_audio(audio_clip)
-                    
-                    # Use compatible parameters for MoviePy
-                    try:
-                        # Try with newer MoviePy version parameters
-                        if progress_callback:
-                            print("Using enhanced encoding settings...")
-                        
-                        # Build parameters dynamically based on MoviePy version
-                        write_params = {
-                            'codec': "libx264",
-                            'audio_codec': "aac", 
-                            'preset': "ultrafast", 
-                            'threads': 4
-                        }
-                        
-                        # Add verbose and logger only if supported
-                        try:
-                            # Test if verbose parameter is supported
-                            import inspect
-                            sig = inspect.signature(video_with_audio.write_videofile)
-                            if 'verbose' in sig.parameters:
-                                write_params['verbose'] = False
-                            if 'logger' in sig.parameters:
-                                write_params['logger'] = None
-                        except:
-                            pass
-                        
-                        video_with_audio.write_videofile(combined_path, **write_params)
-                    except TypeError as e:
-                        # Fallback for older MoviePy versions
-                        if progress_callback:
-                            print("Falling back to standard encoding settings...")
-                        try:
-                            # Build parameters dynamically based on MoviePy version
-                            write_params = {
-                                'codec': "libx264",
-                                'audio_codec': "aac", 
-                                'preset': "ultrafast"
-                            }
-                            
-                            # Add verbose and logger only if supported
-                            try:
-                                import inspect
-                                sig = inspect.signature(video_with_audio.write_videofile)
-                                if 'verbose' in sig.parameters:
-                                    write_params['verbose'] = False
-                                if 'logger' in sig.parameters:
-                                    write_params['logger'] = None
-                            except:
-                                pass
-                            
-                            video_with_audio.write_videofile(combined_path, **write_params)
-                        except TypeError:
-                            # Final fallback with minimal parameters
-                            if progress_callback:
-                                print("Using minimal encoding settings...")
-                            
-                            # Build minimal parameters
-                            write_params = {}
-                            
-                            # Add verbose and logger only if supported
-                            try:
-                                import inspect
-                                sig = inspect.signature(video_with_audio.write_videofile)
-                                if 'verbose' in sig.parameters:
-                                    write_params['verbose'] = False
-                                if 'logger' in sig.parameters:
-                                    write_params['logger'] = None
-                            except:
-                                pass
-                            
-                            video_with_audio.write_videofile(combined_path, **write_params)
-                    
-                    if progress_callback:
-                        print("✅ Video and audio combined successfully!")
-                    
-                    # Clean up clips
-                    video_clip.close()
-                    audio_clip.close()
-                    video_with_audio.close()
-                        
-                except Exception as e:
-                    # Clean up partial files if combination fails
-                    if os.path.exists(combined_path):
-                        try:
-                            os.remove(combined_path)
-                        except:
-                            pass
-                    
-                    # Fallback: download just the video stream without audio
-                    if progress_callback:
-                        print(f"⚠️  Audio combination failed: {e}")
-                        print("📹 Downloading video stream only (without audio)...")
-                    
-                    try:
-                        # Get progressive stream (video + audio combined)
-                        progressive_streams = yt.streams.filter(progressive=True, file_extension="mp4")
-                        if quality == 'best':
-                            progressive_streams = progressive_streams.order_by("resolution").desc()
-                        else:
-                            progressive_streams = progressive_streams.filter(res=quality)
-                        
-                        progressive_stream = progressive_streams.first()
-                        
-                        if progressive_stream:
-                            if progress_callback:
-                                print(f"Downloading progressive stream: {progressive_stream.resolution}")
-                            
-                            # Download directly to final location
-                            progressive_stream.download(output_path=out_dir, filename=filename)
-                            
-                            if progress_callback:
-                                print("✅ Progressive video downloaded successfully!")
-                            
-                            return combined_path
-                        else:
-                            raise RuntimeError("No suitable progressive streams available for fallback")
-                            
-                    except Exception as fallback_error:
-                        raise RuntimeError(f"Both advanced processing and fallback failed. Advanced error: {e}. Fallback error: {fallback_error}")
+                # Combine video and audio using MoviePy (with progressive fallback)
+                if self._combine_video_audio(
+                    yt, quality, video_path, audio_path, combined_path,
+                    out_dir, filename, progress_callback,
+                    VideoFileClip, AudioFileClip,
+                ):
+                    # Fallback path downloaded directly to final location
+                    return combined_path
             else:
                 # Progressive stream already has audio, just copy it
                 if progress_callback:
@@ -1377,6 +1418,124 @@ class PyTubeFixHandler:
     # Advanced Search with Filters (NEW)
     # =========================================================================
 
+    def _build_search_filter(self, Filter, duration, upload_date, sort_by,
+                             features, result_type):
+        """Build a pytubefix ``Filter`` object from the requested search options."""
+        # Build filter
+        filter_obj = Filter.create()
+
+        # Duration filter
+        if duration:
+            duration_map = {
+                'short': Filter.Duration.UNDER_4_MINUTES,
+                'medium': Filter.Duration.BETWEEN_4_20_MINUTES,
+                'long': Filter.Duration.OVER_20_MINUTES,
+            }
+            if duration in duration_map:
+                filter_obj = filter_obj.duration(duration_map[duration])
+
+        # Upload date filter
+        if upload_date:
+            date_map = {
+                'hour': Filter.UploadDate.LAST_HOUR,
+                'today': Filter.UploadDate.TODAY,
+                'week': Filter.UploadDate.THIS_WEEK,
+                'month': Filter.UploadDate.THIS_MONTH,
+                'year': Filter.UploadDate.THIS_YEAR,
+            }
+            if upload_date in date_map:
+                filter_obj = filter_obj.upload_date(date_map[upload_date])
+
+        # Sort by
+        if sort_by:
+            sort_map = {
+                'relevance': Filter.SortBy.RELEVANCE,
+                'date': Filter.SortBy.UPLOAD_DATE,
+                'views': Filter.SortBy.VIEW_COUNT,
+                'rating': Filter.SortBy.RATING,
+            }
+            if sort_by in sort_map:
+                filter_obj = filter_obj.sort_by(sort_map[sort_by])
+
+        # Features
+        if features:
+            feature_map = {
+                'live': Filter.Features.LIVE,
+                '4k': Filter.Features._4K,
+                'hd': Filter.Features.HD,
+                'cc': Filter.Features.SUBTITLES_CC,
+                'creative_commons': Filter.Features.CREATIVE_COMMONS,
+                '360': Filter.Features._360,
+                'vr180': Filter.Features.VR180,
+                'hdr': Filter.Features.HDR,
+            }
+            feature_enums = [feature_map[f] for f in features if f in feature_map]
+            if feature_enums:
+                filter_obj = filter_obj.feature(feature_enums)
+
+        # Result type
+        if result_type:
+            type_map = {
+                'video': Filter.Type.VIDEO,
+                'channel': Filter.Type.CHANNEL,
+                'playlist': Filter.Type.PLAYLIST,
+            }
+            if result_type in type_map:
+                filter_obj = filter_obj.type(type_map[result_type])
+
+        return filter_obj
+
+    def _process_search_results(self, search, query, max_results,
+                                duration, upload_date, sort_by, features,
+                                result_type):
+        """Convert pytubefix search results into the advanced_search response dict."""
+        # Process results
+        videos = []
+        for i, v in enumerate(search.videos):
+            if i >= max_results:
+                break
+            videos.append(self._video_to_dict(v))
+
+        shorts = []
+        for i, s in enumerate(getattr(search, 'shorts', [])):
+            if i >= max_results:
+                break
+            shorts.append(self._video_to_dict(s))
+
+        channels = []
+        for i, c in enumerate(getattr(search, 'channel', [])):
+            if i >= max_results:
+                break
+            channels.append({
+                'channel_id': getattr(c, 'channel_id', ''),
+                'channel_name': getattr(c, 'channel_name', ''),
+            })
+
+        playlists = []
+        for i, p in enumerate(getattr(search, 'playlist', [])):
+            if i >= max_results:
+                break
+            playlists.append({
+                'playlist_id': getattr(p, 'playlist_id', ''),
+                'title': getattr(p, 'title', ''),
+            })
+
+        return {
+            'videos': videos,
+            'shorts': shorts,
+            'channels': channels,
+            'playlists': playlists,
+            'completion_suggestions': getattr(search, 'completion_suggestions', []),
+            'query': query,
+            'filters_applied': {
+                'duration': duration,
+                'upload_date': upload_date,
+                'sort_by': sort_by,
+                'features': features,
+                'type': result_type,
+            }
+        }
+
     def advanced_search(self, query: str,
                         duration: Optional[str] = None,
                         upload_date: Optional[str] = None,
@@ -1412,117 +1571,19 @@ class PyTubeFixHandler:
         try:
             from pytubefix.contrib.search import Search, Filter
 
-            # Build filter
-            filter_obj = Filter.create()
-
-            # Duration filter
-            if duration:
-                duration_map = {
-                    'short': Filter.Duration.UNDER_4_MINUTES,
-                    'medium': Filter.Duration.BETWEEN_4_20_MINUTES,
-                    'long': Filter.Duration.OVER_20_MINUTES,
-                }
-                if duration in duration_map:
-                    filter_obj = filter_obj.duration(duration_map[duration])
-
-            # Upload date filter
-            if upload_date:
-                date_map = {
-                    'hour': Filter.UploadDate.LAST_HOUR,
-                    'today': Filter.UploadDate.TODAY,
-                    'week': Filter.UploadDate.THIS_WEEK,
-                    'month': Filter.UploadDate.THIS_MONTH,
-                    'year': Filter.UploadDate.THIS_YEAR,
-                }
-                if upload_date in date_map:
-                    filter_obj = filter_obj.upload_date(date_map[upload_date])
-
-            # Sort by
-            if sort_by:
-                sort_map = {
-                    'relevance': Filter.SortBy.RELEVANCE,
-                    'date': Filter.SortBy.UPLOAD_DATE,
-                    'views': Filter.SortBy.VIEW_COUNT,
-                    'rating': Filter.SortBy.RATING,
-                }
-                if sort_by in sort_map:
-                    filter_obj = filter_obj.sort_by(sort_map[sort_by])
-
-            # Features
-            if features:
-                feature_map = {
-                    'live': Filter.Features.LIVE,
-                    '4k': Filter.Features._4K,
-                    'hd': Filter.Features.HD,
-                    'cc': Filter.Features.SUBTITLES_CC,
-                    'creative_commons': Filter.Features.CREATIVE_COMMONS,
-                    '360': Filter.Features._360,
-                    'vr180': Filter.Features.VR180,
-                    'hdr': Filter.Features.HDR,
-                }
-                feature_enums = [feature_map[f] for f in features if f in feature_map]
-                if feature_enums:
-                    filter_obj = filter_obj.feature(feature_enums)
-
-            # Result type
-            if result_type:
-                type_map = {
-                    'video': Filter.Type.VIDEO,
-                    'channel': Filter.Type.CHANNEL,
-                    'playlist': Filter.Type.PLAYLIST,
-                }
-                if result_type in type_map:
-                    filter_obj = filter_obj.type(type_map[result_type])
+            # Build filter from the requested options
+            filter_obj = self._build_search_filter(
+                Filter, duration, upload_date, sort_by, features, result_type
+            )
 
             # Execute search
             search = Search(query, filters=filter_obj)
 
-            # Process results
-            videos = []
-            for i, v in enumerate(search.videos):
-                if i >= max_results:
-                    break
-                videos.append(self._video_to_dict(v))
-
-            shorts = []
-            for i, s in enumerate(getattr(search, 'shorts', [])):
-                if i >= max_results:
-                    break
-                shorts.append(self._video_to_dict(s))
-
-            channels = []
-            for i, c in enumerate(getattr(search, 'channel', [])):
-                if i >= max_results:
-                    break
-                channels.append({
-                    'channel_id': getattr(c, 'channel_id', ''),
-                    'channel_name': getattr(c, 'channel_name', ''),
-                })
-
-            playlists = []
-            for i, p in enumerate(getattr(search, 'playlist', [])):
-                if i >= max_results:
-                    break
-                playlists.append({
-                    'playlist_id': getattr(p, 'playlist_id', ''),
-                    'title': getattr(p, 'title', ''),
-                })
-
-            return {
-                'videos': videos,
-                'shorts': shorts,
-                'channels': channels,
-                'playlists': playlists,
-                'completion_suggestions': getattr(search, 'completion_suggestions', []),
-                'query': query,
-                'filters_applied': {
-                    'duration': duration,
-                    'upload_date': upload_date,
-                    'sort_by': sort_by,
-                    'features': features,
-                    'type': result_type,
-                }
-            }
+            # Process results into the response dict
+            return self._process_search_results(
+                search, query, max_results,
+                duration, upload_date, sort_by, features, result_type
+            )
 
         except ImportError:
             raise ImportError("pytubefix Search with Filter not available. Update pytubefix to latest version.")

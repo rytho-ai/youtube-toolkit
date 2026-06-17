@@ -108,6 +108,33 @@ class PlaylistService:
 
         start_time = time.time()
 
+        # Download each video into metadata
+        self._download_playlist_videos(
+            urls, media_type, format, quality, include_captions, audio_bitrate,
+            folders, playlist_dir, metadata
+        )
+
+        # Finalize statistics, persist metadata and print summary
+        metadata_path = self._finalize_playlist_download(
+            metadata, playlist_dir, urls, start_time
+        )
+
+        return {
+            'success': True,
+            'playlist_dir': playlist_dir,
+            'metadata_path': metadata_path,
+            'metadata': metadata
+        }
+
+    def _download_playlist_videos(self, urls, media_type, format, quality,
+                                  include_captions, audio_bitrate,
+                                  folders, playlist_dir, metadata):
+        """Download each playlist video, appending per-video metadata + counts.
+
+        Mutates ``metadata`` in place (videos list and download_summary counters).
+        """
+        import os
+
         # Download each video
         for i, url in enumerate(urls, 1):
             try:
@@ -189,6 +216,15 @@ class PlaylistService:
                 metadata['videos'].append(video_metadata)
                 metadata['download_summary']['failed_downloads'] += 1
 
+    def _finalize_playlist_download(self, metadata, playlist_dir, urls, start_time):
+        """Compute final stats, write metadata.json, print summary.
+
+        Returns the path to the written metadata file.
+        """
+        import json
+        import os
+        import time
+
         # Calculate final statistics
         end_time = time.time()
         metadata['download_summary']['download_time_seconds'] = end_time - start_time
@@ -217,12 +253,7 @@ class PlaylistService:
         print(f"   💾 Total size: {metadata['download_summary']['total_size_mb']} MB")
         print(f"   ⏱️  Time: {metadata['download_summary']['download_time_seconds']:.1f} seconds")
 
-        return {
-            'success': True,
-            'playlist_dir': playlist_dir,
-            'metadata_path': metadata_path,
-            'metadata': metadata
-        }
+        return metadata_path
 
     def get_playlist_info(self, playlist_url: str) -> Dict[str, Any]:
         return self._toolkit.pytubefix.get_playlist_info(playlist_url)

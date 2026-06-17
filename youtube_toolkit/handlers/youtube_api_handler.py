@@ -192,6 +192,178 @@ class YouTubeAPIHandler:
         except Exception as e:
             return []
     
+    def _build_api_search_params(self, filters, query, max_results):
+        """Build the YouTube Data API ``search().list`` parameter dict from filters."""
+        # Build search parameters
+        search_params = {
+            'part': 'snippet',
+            'q': query,
+            'maxResults': max_results,
+            'order': filters.order
+        }
+
+        # FIXED: Always add type filtering - YouTube API requires explicit type=video for video-specific filters
+        search_params['type'] = filters.type
+
+        # Add channel filtering
+        if filters.channel_id:
+            search_params['channelId'] = filters.channel_id
+        if filters.channel_type:
+            search_params['channelType'] = filters.channel_type
+
+        # Add date filtering
+        if filters.published_after:
+            search_params['publishedAfter'] = filters.published_after.isoformat() + 'Z'
+        if filters.published_before:
+            search_params['publishedBefore'] = filters.published_before.isoformat() + 'Z'
+
+        # Add video-specific filters
+        if filters.video_duration:
+            search_params['videoDuration'] = filters.video_duration
+        if filters.video_definition:
+            search_params['videoDefinition'] = filters.video_definition
+        if filters.video_dimension:
+            search_params['videoDimension'] = filters.video_dimension
+        if filters.video_caption:
+            search_params['videoCaption'] = filters.video_caption
+        if filters.video_license:
+            search_params['videoLicense'] = filters.video_license
+        if filters.video_embeddable:
+            search_params['videoEmbeddable'] = filters.video_embeddable
+        if filters.video_syndicated:
+            search_params['videoSyndicated'] = filters.video_syndicated
+        if filters.video_type:
+            search_params['videoType'] = filters.video_type
+
+        # NEW: Event type filtering
+        if filters.event_type:
+            search_params['eventType'] = filters.event_type
+
+        # NEW: Content ownership filtering
+        if filters.for_content_owner:
+            search_params['forContentOwner'] = 'true'
+        if filters.for_developer:
+            search_params['forDeveloper'] = 'true'
+        if filters.for_mine:
+            search_params['forMine'] = 'true'
+        if filters.on_behalf_of_content_owner:
+            search_params['onBehalfOfContentOwner'] = filters.on_behalf_of_content_owner
+
+        # NEW: Video category filtering
+        if filters.video_category_id:
+            search_params['videoCategoryId'] = filters.video_category_id
+
+        # NEW: Paid promotion filtering
+        if filters.video_paid_product_placement:
+            search_params['videoPaidProductPlacement'] = filters.video_paid_product_placement
+
+        # NEW: Topic filtering
+        if filters.topic_id:
+            search_params['topicId'] = filters.topic_id
+
+        # Add location and language filters
+        if filters.location:
+            search_params['location'] = filters.location
+        if filters.location_radius:
+            search_params['locationRadius'] = filters.location_radius
+        if filters.relevance_language:
+            search_params['relevanceLanguage'] = filters.relevance_language
+
+        # Add region and safety filters
+        if filters.region_code:
+            search_params['regionCode'] = filters.region_code
+        if filters.safe_search:
+            search_params['safeSearch'] = filters.safe_search
+
+        # NEW: Pagination support
+        if filters.page_token:
+            search_params['pageToken'] = filters.page_token
+
+        # Use max_results from filters
+        search_params['maxResults'] = filters.max_results
+
+        return search_params
+
+    def _process_api_search_results(self, response, query, filters,
+                                    SearchResult, SearchResultItem,
+                                    Thumbnails, Thumbnail, datetime):
+        """Convert a YouTube Data API search response into the result dict."""
+        # Process results
+        items = []
+        for item in response.get('items', []):
+            try:
+                snippet = item['snippet']
+                item_id = item['id']
+
+                # Determine resource type and extract ID
+                kind = item_id.get('kind', 'youtube#video')
+                video_id = item_id.get('videoId')
+                channel_id = item_id.get('channelId')
+                playlist_id = item_id.get('playlistId')
+
+                # Parse thumbnails
+                thumbnails_data = snippet.get('thumbnails', {})
+                thumbnails = Thumbnails(
+                    default=Thumbnail(**thumbnails_data['default']) if thumbnails_data.get('default') else None,
+                    medium=Thumbnail(**thumbnails_data['medium']) if thumbnails_data.get('medium') else None,
+                    high=Thumbnail(**thumbnails_data['high']) if thumbnails_data.get('high') else None,
+                    standard=Thumbnail(**thumbnails_data['standard']) if thumbnails_data.get('standard') else None,
+                    maxres=Thumbnail(**thumbnails_data['maxres']) if thumbnails_data.get('maxres') else None,
+                )
+
+                # Parse published date
+                published_at = None
+                if snippet.get('publishedAt'):
+                    try:
+                        published_at = datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00'))
+                    except:
+                        pass
+
+                # Create search result item
+                search_item = SearchResultItem(
+                    kind=kind,
+                    etag=item.get('etag', ''),
+                    video_id=video_id,
+                    channel_id=channel_id,
+                    playlist_id=playlist_id,
+                    title=snippet.get('title', ''),
+                    description=snippet.get('description', ''),
+                    channel_title=snippet.get('channelTitle', ''),
+                    published_at=published_at,
+                    thumbnails=thumbnails,
+                    live_broadcast_content=snippet.get('liveBroadcastContent', 'none')
+                )
+
+                items.append(search_item)
+
+            except Exception as item_error:
+                print(f"Warning: Failed to process search item: {item_error}")
+                continue
+
+        # Create comprehensive search result with quota information
+        search_result = SearchResult(
+            items=items,
+            total_results=response.get('pageInfo', {}).get('totalResults', len(items)),
+            query=query,
+            filters_applied=filters,
+            backend_used='youtube_api',
+            next_page_token=response.get('nextPageToken'),
+            prev_page_token=response.get('prevPageToken')
+        )
+
+        result_dict = search_result.to_dict()
+
+        # Add quota and API information
+        result_dict['quota_cost'] = 100  # YouTube Search API costs 100 quota units
+        result_dict['api_info'] = {
+            'region_code': response.get('regionCode'),
+            'page_info': response.get('pageInfo', {}),
+            'etag': response.get('etag'),
+            'kind': response.get('kind')
+        }
+
+        return result_dict
+
     def advanced_search(self, query: str, filters: Optional[Dict] = None, max_results: int = 20) -> Dict[str, Any]:
         """
         Advanced search using YouTube Data API with comprehensive filtering and results.
@@ -219,95 +391,10 @@ class YouTubeAPIHandler:
             
             # Limit max_results to API maximum
             max_results = min(max_results, 50)
-            
-            # Build search parameters
-            search_params = {
-                'part': 'snippet',
-                'q': query,
-                'maxResults': max_results,
-                'order': filters.order
-            }
-            
-            # FIXED: Always add type filtering - YouTube API requires explicit type=video for video-specific filters
-            search_params['type'] = filters.type
-            
-            # Add channel filtering
-            if filters.channel_id:
-                search_params['channelId'] = filters.channel_id
-            if filters.channel_type:
-                search_params['channelType'] = filters.channel_type
-            
-            # Add date filtering
-            if filters.published_after:
-                search_params['publishedAfter'] = filters.published_after.isoformat() + 'Z'
-            if filters.published_before:
-                search_params['publishedBefore'] = filters.published_before.isoformat() + 'Z'
-            
-            # Add video-specific filters
-            if filters.video_duration:
-                search_params['videoDuration'] = filters.video_duration
-            if filters.video_definition:
-                search_params['videoDefinition'] = filters.video_definition
-            if filters.video_dimension:
-                search_params['videoDimension'] = filters.video_dimension
-            if filters.video_caption:
-                search_params['videoCaption'] = filters.video_caption
-            if filters.video_license:
-                search_params['videoLicense'] = filters.video_license
-            if filters.video_embeddable:
-                search_params['videoEmbeddable'] = filters.video_embeddable
-            if filters.video_syndicated:
-                search_params['videoSyndicated'] = filters.video_syndicated
-            if filters.video_type:
-                search_params['videoType'] = filters.video_type
-            
-            # NEW: Event type filtering
-            if filters.event_type:
-                search_params['eventType'] = filters.event_type
-            
-            # NEW: Content ownership filtering
-            if filters.for_content_owner:
-                search_params['forContentOwner'] = 'true'
-            if filters.for_developer:
-                search_params['forDeveloper'] = 'true'
-            if filters.for_mine:
-                search_params['forMine'] = 'true'
-            if filters.on_behalf_of_content_owner:
-                search_params['onBehalfOfContentOwner'] = filters.on_behalf_of_content_owner
-            
-            # NEW: Video category filtering
-            if filters.video_category_id:
-                search_params['videoCategoryId'] = filters.video_category_id
-            
-            # NEW: Paid promotion filtering
-            if filters.video_paid_product_placement:
-                search_params['videoPaidProductPlacement'] = filters.video_paid_product_placement
-            
-            # NEW: Topic filtering
-            if filters.topic_id:
-                search_params['topicId'] = filters.topic_id
-            
-            # Add location and language filters
-            if filters.location:
-                search_params['location'] = filters.location
-            if filters.location_radius:
-                search_params['locationRadius'] = filters.location_radius
-            if filters.relevance_language:
-                search_params['relevanceLanguage'] = filters.relevance_language
-            
-            # Add region and safety filters
-            if filters.region_code:
-                search_params['regionCode'] = filters.region_code
-            if filters.safe_search:
-                search_params['safeSearch'] = filters.safe_search
-            
-            # NEW: Pagination support
-            if filters.page_token:
-                search_params['pageToken'] = filters.page_token
-            
-            # Use max_results from filters
-            search_params['maxResults'] = filters.max_results
-            
+
+            # Build search parameters from the filters
+            search_params = self._build_api_search_params(filters, query, max_results)
+
             # Validate filters before making request
             validation_errors = filters.validate_filters()
             if validation_errors:
@@ -321,83 +408,13 @@ class YouTubeAPIHandler:
             
             # Execute search
             response = self._youtube.search().list(**search_params).execute()
-            
-            # Process results
-            items = []
-            for item in response.get('items', []):
-                try:
-                    snippet = item['snippet']
-                    item_id = item['id']
-                    
-                    # Determine resource type and extract ID
-                    kind = item_id.get('kind', 'youtube#video')
-                    video_id = item_id.get('videoId')
-                    channel_id = item_id.get('channelId')
-                    playlist_id = item_id.get('playlistId')
-                    
-                    # Parse thumbnails
-                    thumbnails_data = snippet.get('thumbnails', {})
-                    thumbnails = Thumbnails(
-                        default=Thumbnail(**thumbnails_data['default']) if thumbnails_data.get('default') else None,
-                        medium=Thumbnail(**thumbnails_data['medium']) if thumbnails_data.get('medium') else None,
-                        high=Thumbnail(**thumbnails_data['high']) if thumbnails_data.get('high') else None,
-                        standard=Thumbnail(**thumbnails_data['standard']) if thumbnails_data.get('standard') else None,
-                        maxres=Thumbnail(**thumbnails_data['maxres']) if thumbnails_data.get('maxres') else None,
-                    )
-                    
-                    # Parse published date
-                    published_at = None
-                    if snippet.get('publishedAt'):
-                        try:
-                            published_at = datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00'))
-                        except:
-                            pass
-                    
-                    # Create search result item
-                    search_item = SearchResultItem(
-                        kind=kind,
-                        etag=item.get('etag', ''),
-                        video_id=video_id,
-                        channel_id=channel_id,
-                        playlist_id=playlist_id,
-                        title=snippet.get('title', ''),
-                        description=snippet.get('description', ''),
-                        channel_title=snippet.get('channelTitle', ''),
-                        published_at=published_at,
-                        thumbnails=thumbnails,
-                        live_broadcast_content=snippet.get('liveBroadcastContent', 'none')
-                    )
-                    
-                    items.append(search_item)
-                    
-                except Exception as item_error:
-                    print(f"Warning: Failed to process search item: {item_error}")
-                    continue
-            
-            # Create comprehensive search result with quota information
-            search_result = SearchResult(
-                items=items,
-                total_results=response.get('pageInfo', {}).get('totalResults', len(items)),
-                query=query,
-                filters_applied=filters,
-                backend_used='youtube_api',
-                next_page_token=response.get('nextPageToken'),
-                prev_page_token=response.get('prevPageToken')
+
+            # Process the API response into the result dict
+            return self._process_api_search_results(
+                response, query, filters,
+                SearchResult, SearchResultItem, Thumbnails, Thumbnail, datetime
             )
-            
-            result_dict = search_result.to_dict()
-            
-            # Add quota and API information
-            result_dict['quota_cost'] = 100  # YouTube Search API costs 100 quota units
-            result_dict['api_info'] = {
-                'region_code': response.get('regionCode'),
-                'page_info': response.get('pageInfo', {}),
-                'etag': response.get('etag'),
-                'kind': response.get('kind')
-            }
-            
-            return result_dict
-            
+
         except Exception as e:
             # FIXED: Don't fall back - raise the error as requested by user
             raise RuntimeError(f"Advanced search failed: {e}")
@@ -976,6 +993,136 @@ class YouTubeAPIHandler:
             print(f"Error fetching comments: {e}")
             return []
     
+    def _process_comment_threads(self, response, filters, video_id,
+                                 Comment, CommentAuthor, CommentMetrics, datetime):
+        """Parse comment-thread API items into Comment objects with running stats.
+
+        Returns a (comments, total_likes, total_replies, author_counts) tuple.
+        """
+        # Process comment threads
+        comments = []
+        total_likes = 0
+        total_replies = 0
+        author_counts = {}
+
+        for item in response.get('items', []):
+            try:
+                # Parse top-level comment
+                top_comment_data = item['snippet']['topLevelComment']
+                snippet = top_comment_data['snippet']
+
+                # Create comment author
+                author = CommentAuthor(
+                    display_name=snippet.get('authorDisplayName', 'Unknown'),
+                    profile_image_url=snippet.get('authorProfileImageUrl'),
+                    channel_id=snippet.get('authorChannelId', {}).get('value'),
+                    channel_url=snippet.get('authorChannelUrl'),
+                    is_verified=snippet.get('authorChannelVerified', False),
+                    is_channel_owner=snippet.get('authorChannelVerified', False)
+                )
+
+                # Create comment metrics
+                metrics = CommentMetrics(
+                    like_count=snippet.get('likeCount', 0),
+                    total_reply_count=item['snippet'].get('totalReplyCount', 0),
+                    updated_at=datetime.fromisoformat(snippet['updatedAt'].replace('Z', '+00:00')) if snippet.get('updatedAt') else None
+                )
+
+                # Create comment
+                comment = Comment(
+                    comment_id=top_comment_data['id'],
+                    text=snippet.get('textDisplay', ''),
+                    author=author,
+                    published_at=datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00')),
+                    updated_at=datetime.fromisoformat(snippet['updatedAt'].replace('Z', '+00:00')) if snippet.get('updatedAt') else None,
+                    metrics=metrics,
+                    video_id=video_id
+                )
+
+                # Process replies if requested
+                if filters.include_replies and 'replies' in item:
+                    replies_data = item['replies'].get('comments', [])
+                    for reply_data in replies_data[:filters.max_replies_per_comment]:
+                        reply_snippet = reply_data['snippet']
+
+                        reply_author = CommentAuthor(
+                            display_name=reply_snippet.get('authorDisplayName', 'Unknown'),
+                            profile_image_url=reply_snippet.get('authorProfileImageUrl'),
+                            channel_id=reply_snippet.get('authorChannelId', {}).get('value'),
+                            channel_url=reply_snippet.get('authorChannelUrl')
+                        )
+
+                        reply_metrics = CommentMetrics(
+                            like_count=reply_snippet.get('likeCount', 0)
+                        )
+
+                        reply = Comment(
+                            comment_id=reply_data['id'],
+                            text=reply_snippet.get('textDisplay', ''),
+                            author=reply_author,
+                            published_at=datetime.fromisoformat(reply_snippet['publishedAt'].replace('Z', '+00:00')),
+                            metrics=reply_metrics,
+                            parent_id=comment.comment_id,
+                            video_id=video_id
+                        )
+
+                        comment.add_reply(reply)
+                        total_replies += 1
+
+                # Apply filters
+                if self._apply_comment_filters(comment, filters):
+                    comments.append(comment)
+                    total_likes += comment.metrics.like_count
+
+                    # Track author statistics
+                    author_name = comment.author.display_name
+                    author_counts[author_name] = author_counts.get(author_name, 0) + 1
+
+            except Exception as comment_error:
+                print(f"Warning: Failed to process comment: {comment_error}")
+                continue
+
+        return comments, total_likes, total_replies, author_counts
+
+    def _build_comment_result(self, response, filters, comments, total_likes,
+                              total_replies, author_counts,
+                              CommentResult, CommentAnalytics, CommentSentimentAnalyzer):
+        """Build comment analytics and the comprehensive result dict."""
+        # Create analytics
+        analytics = CommentAnalytics(
+            total_comments=len(comments),
+            total_replies=total_replies,
+            total_likes=total_likes,
+            unique_authors=len(author_counts),
+            top_authors=[
+                {'name': name, 'comment_count': count}
+                for name, count in sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            ],
+            most_liked_comments=sorted(comments, key=lambda x: x.metrics.like_count, reverse=True)[:5],
+            most_replied_comments=sorted(comments, key=lambda x: x.metrics.total_reply_count, reverse=True)[:5]
+        )
+
+        # Perform sentiment analysis if requested
+        if len(comments) > 0:
+            sentiment_scores = CommentSentimentAnalyzer.analyze_sentiment(
+                ' '.join([comment.text for comment in comments[:50]])  # Analyze first 50 comments
+            )
+            analytics.sentiment_analysis = sentiment_scores
+
+        # Create comprehensive result
+        result = CommentResult(
+            comments=comments,
+            total_results=response.get('pageInfo', {}).get('totalResults', len(comments)),
+            page_info=response.get('pageInfo', {}),
+            next_page_token=response.get('nextPageToken'),
+            prev_page_token=response.get('prevPageToken'),
+            filters_applied=filters,
+            analytics=analytics,
+            quota_cost=1
+        )
+
+        return result.to_dict()
+
     def advanced_fetch_comments(self, video_url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Advanced comment fetching with comprehensive filtering, pagination, and analytics.
@@ -1032,125 +1179,19 @@ class YouTubeAPIHandler:
             
             # Execute comment threads request
             response = self._youtube.commentThreads().list(**thread_params).execute()
-            
-            # Process comment threads
-            comments = []
-            total_likes = 0
-            total_replies = 0
-            author_counts = {}
-            
-            for item in response.get('items', []):
-                try:
-                    # Parse top-level comment
-                    top_comment_data = item['snippet']['topLevelComment']
-                    snippet = top_comment_data['snippet']
-                    
-                    # Create comment author
-                    author = CommentAuthor(
-                        display_name=snippet.get('authorDisplayName', 'Unknown'),
-                        profile_image_url=snippet.get('authorProfileImageUrl'),
-                        channel_id=snippet.get('authorChannelId', {}).get('value'),
-                        channel_url=snippet.get('authorChannelUrl'),
-                        is_verified=snippet.get('authorChannelVerified', False),
-                        is_channel_owner=snippet.get('authorChannelVerified', False)
-                    )
-                    
-                    # Create comment metrics
-                    metrics = CommentMetrics(
-                        like_count=snippet.get('likeCount', 0),
-                        total_reply_count=item['snippet'].get('totalReplyCount', 0),
-                        updated_at=datetime.fromisoformat(snippet['updatedAt'].replace('Z', '+00:00')) if snippet.get('updatedAt') else None
-                    )
-                    
-                    # Create comment
-                    comment = Comment(
-                        comment_id=top_comment_data['id'],
-                        text=snippet.get('textDisplay', ''),
-                        author=author,
-                        published_at=datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00')),
-                        updated_at=datetime.fromisoformat(snippet['updatedAt'].replace('Z', '+00:00')) if snippet.get('updatedAt') else None,
-                        metrics=metrics,
-                        video_id=video_id
-                    )
-                    
-                    # Process replies if requested
-                    if filters.include_replies and 'replies' in item:
-                        replies_data = item['replies'].get('comments', [])
-                        for reply_data in replies_data[:filters.max_replies_per_comment]:
-                            reply_snippet = reply_data['snippet']
-                            
-                            reply_author = CommentAuthor(
-                                display_name=reply_snippet.get('authorDisplayName', 'Unknown'),
-                                profile_image_url=reply_snippet.get('authorProfileImageUrl'),
-                                channel_id=reply_snippet.get('authorChannelId', {}).get('value'),
-                                channel_url=reply_snippet.get('authorChannelUrl')
-                            )
-                            
-                            reply_metrics = CommentMetrics(
-                                like_count=reply_snippet.get('likeCount', 0)
-                            )
-                            
-                            reply = Comment(
-                                comment_id=reply_data['id'],
-                                text=reply_snippet.get('textDisplay', ''),
-                                author=reply_author,
-                                published_at=datetime.fromisoformat(reply_snippet['publishedAt'].replace('Z', '+00:00')),
-                                metrics=reply_metrics,
-                                parent_id=comment.comment_id,
-                                video_id=video_id
-                            )
-                            
-                            comment.add_reply(reply)
-                            total_replies += 1
-                    
-                    # Apply filters
-                    if self._apply_comment_filters(comment, filters):
-                        comments.append(comment)
-                        total_likes += comment.metrics.like_count
-                        
-                        # Track author statistics
-                        author_name = comment.author.display_name
-                        author_counts[author_name] = author_counts.get(author_name, 0) + 1
-                
-                except Exception as comment_error:
-                    print(f"Warning: Failed to process comment: {comment_error}")
-                    continue
-            
-            # Create analytics
-            analytics = CommentAnalytics(
-                total_comments=len(comments),
-                total_replies=total_replies,
-                total_likes=total_likes,
-                unique_authors=len(author_counts),
-                top_authors=[
-                    {'name': name, 'comment_count': count} 
-                    for name, count in sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-                ],
-                most_liked_comments=sorted(comments, key=lambda x: x.metrics.like_count, reverse=True)[:5],
-                most_replied_comments=sorted(comments, key=lambda x: x.metrics.total_reply_count, reverse=True)[:5]
+
+            # Process comment threads into Comment objects + running stats
+            comments, total_likes, total_replies, author_counts = self._process_comment_threads(
+                response, filters, video_id,
+                Comment, CommentAuthor, CommentMetrics, datetime
             )
-            
-            # Perform sentiment analysis if requested
-            if len(comments) > 0:
-                sentiment_scores = CommentSentimentAnalyzer.analyze_sentiment(
-                    ' '.join([comment.text for comment in comments[:50]])  # Analyze first 50 comments
-                )
-                analytics.sentiment_analysis = sentiment_scores
-            
-            # Create comprehensive result
-            result = CommentResult(
-                comments=comments,
-                total_results=response.get('pageInfo', {}).get('totalResults', len(comments)),
-                page_info=response.get('pageInfo', {}),
-                next_page_token=response.get('nextPageToken'),
-                prev_page_token=response.get('prevPageToken'),
-                filters_applied=filters,
-                analytics=analytics,
-                quota_cost=1
+
+            # Build analytics + comprehensive result dict
+            return self._build_comment_result(
+                response, filters, comments, total_likes, total_replies, author_counts,
+                CommentResult, CommentAnalytics, CommentSentimentAnalyzer
             )
-            
-            return result.to_dict()
-            
+
         except Exception as e:
             print(f"Advanced comment fetch failed: {e}")
             return {
