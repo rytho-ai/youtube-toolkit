@@ -86,6 +86,12 @@ for item in results.items:
 
 ## The 5 Core APIs
 
+> **These five sub-APIs (`get` / `download` / `search` / `analyze` / `stream`) are the
+> recommended public API.** The older flat methods (`toolkit.get_video_info()`,
+> `toolkit.download_audio()`, …) still work for backward compatibility but are
+> **legacy**: calling one directly emits a `DeprecationWarning` pointing at its
+> sub-API replacement. New code should use the sub-APIs below.
+
 ### GET - Retrieve Information
 
 ```python

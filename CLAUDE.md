@@ -74,6 +74,23 @@ class AnalyzeAPI:
 3. **Consistency**: Single point of control for each feature; api.py is the stable contract
 4. **Testability**: Easier to mock at api.py level
 
+### Public API: the sub-APIs are canonical; flat methods are legacy
+
+The five sub-APIs (`get` / `download` / `search` / `analyze` / `stream`) are THE
+recommended public API. The ~100 flat `YouTubeToolkit` methods
+(`get_video_info()`, `download_audio()`, …) remain for backward compatibility but
+are **legacy**: each clear duplicate carries `@deprecated("toolkit.x.y()")` from
+`utils/deprecation.py`, which emits a `DeprecationWarning` **only when called from
+outside the `youtube_toolkit` package**. This means internal callers (the
+sub-APIs and the services, which still route cross-domain calls through these
+methods) never self-warn, while external users get a runtime nudge. When adding a
+new capability, expose it on a sub-API; only add a flat method if a legacy-style
+entry point is genuinely needed, and decorate it if it duplicates a sub-API.
+
+The 14 internal plumbing delegators that sub_apis needs (e.g.
+`_get_video_info_pytubefix`, `_stream_to_buffer`) are `_`-prefixed private — keep
+new internal-only delegators private too, so the public surface stays small.
+
 ### Parallel / async downloads (conservative by design)
 
 Multi-video parallelism, fragment concurrency, and an async facade are all

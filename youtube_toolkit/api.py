@@ -34,6 +34,7 @@ from .services.download import DownloadService
 import os
 import time
 import warnings
+from .utils.deprecation import deprecated
 
 
 class YouTubeToolkit:
@@ -121,6 +122,7 @@ class YouTubeToolkit:
         self.analyze = AnalyzeAPI(self)
         self.stream = StreamAPI(self)
     
+    @deprecated("toolkit.get.video()")
     def get_video_info(self, url: str) -> Dict[str, Any]:
         """
         Get video information with automatic fallback.
@@ -138,6 +140,7 @@ class YouTubeToolkit:
         """
         return self._get_info.get_video_info(url)
     
+    @deprecated("toolkit.download.audio()")
     def download_audio(self, url: str, format: str = 'wav',
                        progress_callback: bool = True, prefer_yt_dlp: bool = False,
                        output_path: str = None, bitrate: str = '128k',
@@ -166,6 +169,7 @@ class YouTubeToolkit:
             concurrent_fragments=concurrent_fragments
         )
     
+    @deprecated("toolkit.download.video()")
     def download_video(self, url: str, quality: str = 'best',
                        progress_callback: bool = True, prefer_yt_dlp: bool = True,
                        output_path: str = None, concurrent_fragments: int = 1) -> str:
@@ -232,6 +236,7 @@ class YouTubeToolkit:
             max_workers=max_workers, **kwargs
         )
 
+    @deprecated("toolkit.get.formats()")
     def get_available_formats(self, url: str) -> Dict[str, Any]:
         """
         Get available download formats.
@@ -271,6 +276,7 @@ class YouTubeToolkit:
         # If both fail, raise error
         raise ValueError(f"Could not extract video ID from URL: {url}")
     
+    @deprecated("toolkit.get.metadata()")
     def get_video_description(self, url: str) -> str:
         """
         Get video description using yt-dlp.
@@ -295,6 +301,7 @@ class YouTubeToolkit:
         """
         return self._system.test_handlers(url)
     
+    @deprecated("toolkit.get.metadata()")
     def get_rich_metadata(self, url: str) -> Dict[str, Any]:
         """
         Get rich metadata using YouTube API.
@@ -307,6 +314,7 @@ class YouTubeToolkit:
         """
         return self._get_info.get_rich_metadata(url)
     
+    @deprecated("toolkit.analyze.comments()")
     def get_comments(self, url: str, max_results: int = 100,
                      sort_by: str = 'relevance') -> List[Dict[str, Any]]:
         """
@@ -322,6 +330,7 @@ class YouTubeToolkit:
         """
         return self._comments.get_comments(url, max_results=max_results, sort_by=sort_by)
     
+    @deprecated("toolkit.analyze.comments()")
     def advanced_get_comments(self, url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Advanced comment retrieval with comprehensive filtering, pagination, and analytics.
@@ -335,6 +344,7 @@ class YouTubeToolkit:
         """
         return self._comments.advanced_get_comments(url, filters)
     
+    @deprecated("toolkit.analyze.comments()")
     def get_comments_paginated(self, url: str, page_token: Optional[str] = None,
                               max_results: int = 100, order: str = 'relevance') -> Dict[str, Any]:
         """
@@ -395,6 +405,7 @@ class YouTubeToolkit:
         """
         return self._comments.get_comments_by_author(url, author_channel_id, max_results)
     
+    @deprecated("toolkit.analyze.comments()")
     def get_recent_comments(self, url: str, days_back: int = 7,
                            max_results: int = 100) -> Dict[str, Any]:
         """
@@ -438,6 +449,7 @@ class YouTubeToolkit:
         """
         return self._comments.display_comments(url, top_n, sort_by)
     
+    @deprecated("toolkit.search.videos()")
     def search_videos(self, query: str, filters: Optional[Dict] = None, max_results: int = 20) -> List[Dict[str, Any]]:
         """
         Search for YouTube videos (legacy method for backward compatibility).
@@ -452,6 +464,7 @@ class YouTubeToolkit:
         """
         return self._search.search_videos(query, filters, max_results)
     
+    @deprecated("toolkit.search.with_filters()")
     def advanced_search(self, query: str, filters: Optional[Dict] = None, max_results: int = 20) -> Dict[str, Any]:
         """
         Advanced search with comprehensive filtering and rich results.
@@ -537,6 +550,7 @@ class YouTubeToolkit:
         """
         return self._search.search_paginated(query, filters, page_token, max_results)
     
+    @deprecated("toolkit.search.categories()")
     def get_search_categories(self) -> Dict[str, str]:
         """
         Get available YouTube categories for filtering.
@@ -546,6 +560,7 @@ class YouTubeToolkit:
         """
         return self._search.get_search_categories()
     
+    @deprecated("toolkit.get.captions()")
     def get_captions(self, url: str) -> Dict[str, Any]:
         """
         Get available captions/subtitles for a YouTube video.
@@ -558,6 +573,7 @@ class YouTubeToolkit:
         """
         return self._captions.get_captions(url)
     
+    @deprecated("toolkit.download.captions()")
     def download_captions(self, url: str, language_code: str = 'en', output_path: str = None) -> str:
         """
         Download captions with automatic fallback across handlers (legacy method for backward compatibility).
@@ -572,6 +588,7 @@ class YouTubeToolkit:
         """
         return self._captions.download_captions(url, language_code, output_path)
     
+    @deprecated("toolkit.get.captions()")
     def list_captions(self, url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """
         List available caption tracks for a video with advanced filtering.
@@ -692,6 +709,7 @@ class YouTubeToolkit:
         """
         return self._system.test_search(query)
     
+    @deprecated("toolkit.get.playlist.urls()")
     def get_playlist_urls(self, playlist_url: str) -> List[str]:
         """
         Get video URLs from playlist with automatic fallback.
@@ -704,6 +722,7 @@ class YouTubeToolkit:
         """
         return self._playlist.get_playlist_urls(playlist_url)
     
+    @deprecated("toolkit.download.playlist()")
     def download_playlist_media(self, playlist_url: str, media_type: str = 'audio',
                                format: str = 'wav', quality: str = 'best',
                                include_captions: bool = False, audio_bitrate: str = '128k',
@@ -743,6 +762,7 @@ class YouTubeToolkit:
     # These methods provide channel-related functionality.
     # =========================================================================
 
+    @deprecated("toolkit.get.channel.videos()")
     def get_channel_videos(self, channel: str,
                            content_type: str = 'videos',
                            limit: Optional[int] = None,
@@ -772,6 +792,7 @@ class YouTubeToolkit:
         """
         return self._channel.get_channel_videos(channel, content_type, limit, sort_by, use_scrapetube)
 
+    @deprecated("toolkit.get.channel()")
     def get_channel_info(self, channel_url: str) -> Dict[str, Any]:
         """
         Get channel metadata without API quota.
@@ -789,6 +810,7 @@ class YouTubeToolkit:
         """
         return self._channel.get_channel_info(channel_url)
 
+    @deprecated("toolkit.get.channel.all_videos()")
     def get_all_channel_videos(self, channel: str,
                                content_type: str = 'videos') -> List[Dict[str, Any]]:
         """
@@ -818,6 +840,7 @@ class YouTubeToolkit:
     # VIDEO CHAPTERS & ENGAGEMENT (v0.3+)
     # =========================================================================
 
+    @deprecated("toolkit.get.chapters()")
     def get_video_chapters(self, url: str) -> List[Dict[str, Any]]:
         """
         Get video chapters/timestamps.
@@ -835,6 +858,7 @@ class YouTubeToolkit:
         """
         return self._get_info.get_video_chapters(url)
 
+    @deprecated("toolkit.analyze.engagement()")
     def get_key_moments(self, url: str) -> List[Dict[str, Any]]:
         """
         Get AI-generated key moments/timestamps.
@@ -847,6 +871,7 @@ class YouTubeToolkit:
         """
         return self._get_info.get_key_moments(url)
 
+    @deprecated("toolkit.analyze.engagement()")
     def get_replayed_heatmap(self, url: str) -> List[Dict[str, Any]]:
         """
         Get viewer engagement heatmap data (most replayed segments).
@@ -863,6 +888,7 @@ class YouTubeToolkit:
     # ADVANCED SEARCH (PYTUBEFIX) (v0.3+)
     # =========================================================================
 
+    @deprecated("toolkit.search.with_filters()")
     def search_with_filters(self, query: str,
                             duration: Optional[str] = None,
                             upload_date: Optional[str] = None,
@@ -906,6 +932,7 @@ class YouTubeToolkit:
     # PLAYLIST INFO (v0.3+)
     # =========================================================================
 
+    @deprecated("toolkit.get.playlist()")
     def get_playlist_info(self, playlist_url: str) -> Dict[str, Any]:
         """
         Get comprehensive playlist information.
@@ -956,6 +983,7 @@ class YouTubeToolkit:
     # The old methods above are kept for backward compatibility.
     # =========================================================================
 
+    @deprecated("toolkit.get.video()")
     def get_video(self, url: str) -> VideoInfo:
         """
         Get video information as a VideoInfo object.
@@ -1135,6 +1163,7 @@ class YouTubeToolkit:
 
     # --- SponsorBlock Methods ---
 
+    @deprecated("toolkit.analyze.sponsorblock()")
     def get_sponsorblock_segments(self, url: str) -> List[Dict[str, Any]]:
         """
         Get SponsorBlock segments for a video.
@@ -1150,6 +1179,7 @@ class YouTubeToolkit:
         """
         return self._analyze.get_sponsorblock_segments(url)
 
+    @deprecated("toolkit.download.with_sponsorblock()")
     def download_with_sponsorblock(self, url: str, output_path: str = None,
                                    action: str = 'remove',
                                    categories: List[str] = None) -> str:
@@ -1169,6 +1199,7 @@ class YouTubeToolkit:
 
     # --- Live Stream Methods ---
 
+    @deprecated("toolkit.stream.live.status()")
     def get_live_status(self, url: str) -> Dict[str, Any]:
         """
         Get live stream status information.
@@ -1181,6 +1212,7 @@ class YouTubeToolkit:
         """
         return self._analyze.get_live_status(url)
 
+    @deprecated("toolkit.download.live()")
     def download_live_stream(self, url: str, output_path: str = None,
                              from_start: bool = False,
                              duration: int = None) -> str:
@@ -1198,6 +1230,7 @@ class YouTubeToolkit:
         """
         return self._download.download_live_stream(url, output_path, from_start, duration)
 
+    @deprecated("toolkit.stream.live.status()")
     def is_live(self, url: str) -> bool:
         """
         Check if a video is currently live streaming.
@@ -1212,6 +1245,7 @@ class YouTubeToolkit:
 
     # --- Archive Methods ---
 
+    @deprecated("toolkit.download.with_archive()")
     def download_with_archive(self, url: str, output_path: str = None,
                               archive_file: str = None,
                               format: str = 'best') -> Optional[str]:
@@ -1244,6 +1278,7 @@ class YouTubeToolkit:
 
     # --- Engagement Methods ---
 
+    @deprecated("toolkit.analyze.engagement()")
     def get_heatmap(self, url: str) -> List[Dict[str, Any]]:
         """
         Get viewer engagement heatmap data (most replayed sections).
@@ -1337,6 +1372,7 @@ class YouTubeToolkit:
 
     # --- Chapters Methods ---
 
+    @deprecated("toolkit.get.chapters()")
     def get_chapters(self, url: str) -> List[Dict[str, Any]]:
         """
         Get video chapters with automatic fallback.
@@ -1366,6 +1402,7 @@ class YouTubeToolkit:
 
     # --- Thumbnail Methods ---
 
+    @deprecated("toolkit.download.thumbnail()")
     def download_thumbnail(self, url: str, output_path: str = None,
                            quality: str = 'best') -> str:
         """
@@ -1395,6 +1432,7 @@ class YouTubeToolkit:
 
     # --- Enhanced Audio Methods ---
 
+    @deprecated("toolkit.download.with_metadata()")
     def download_audio_with_metadata(self, url: str, output_path: str = None,
                                      format: str = 'mp3',
                                      embed_thumbnail: bool = True,
@@ -1420,6 +1458,7 @@ class YouTubeToolkit:
 
     # --- Match Filter Methods ---
 
+    @deprecated("toolkit.download.with_filter()")
     def download_with_filter(self, url: str, output_path: str = None,
                              match_filter: str = None,
                              format: str = 'best') -> Optional[str]:
@@ -1529,6 +1568,7 @@ class YouTubeToolkit:
 
     # --- Metadata File Export Methods ---
 
+    @deprecated("toolkit.download.with_metadata()")
     def download_with_metadata_files(self, url: str, output_path: str = None,
                                      write_info_json: bool = True,
                                      write_description: bool = True,
@@ -1574,6 +1614,7 @@ class YouTubeToolkit:
         """
         return self._download.export_metadata_only(url, output_path, format_type)
 
+    @deprecated("toolkit.get.metadata()")
     def get_full_metadata(self, url: str) -> Dict[str, Any]:
         """
         Get comprehensive metadata for a video (more fields than get_video_info).
@@ -1604,6 +1645,7 @@ class YouTubeToolkit:
         """
         return self._get_info.is_youtube_short(url)
 
+    @deprecated("toolkit.get.video()")
     def get_shorts_info(self, url: str) -> Dict[str, Any]:
         """
         Get information about a YouTube Short.
@@ -1617,6 +1659,7 @@ class YouTubeToolkit:
         """
         return self._get_info.get_shorts_info(url)
 
+    @deprecated("toolkit.download.shorts()")
     def download_short(self, url: str, output_path: str = None,
                        format: str = 'mp4',
                        with_audio: bool = True) -> str:
@@ -1634,6 +1677,7 @@ class YouTubeToolkit:
         """
         return self._download.download_short(url, output_path, format, with_audio)
 
+    @deprecated("toolkit.get.channel.shorts()")
     def get_channel_shorts(self, channel_url: str, max_results: int = 50) -> List[Dict[str, Any]]:
         """
         Get all Shorts from a YouTube channel.
@@ -1706,6 +1750,7 @@ class YouTubeToolkit:
 
     # --- Video Categories API ---
 
+    @deprecated("toolkit.search.categories()")
     def get_video_categories(self, region_code: str = 'US',
                             language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1736,6 +1781,7 @@ class YouTubeToolkit:
 
     # --- i18n Languages/Regions API ---
 
+    @deprecated("toolkit.search.languages()")
     def get_supported_languages(self, language: str = 'en') -> List[Dict[str, Any]]:
         """
         Get list of languages supported by YouTube.
@@ -1748,6 +1794,7 @@ class YouTubeToolkit:
         """
         return self._system.get_supported_languages(language)
 
+    @deprecated("toolkit.search.regions()")
     def get_supported_regions(self, language: str = 'en') -> List[Dict[str, Any]]:
         """
         Get list of regions/countries supported by YouTube.
@@ -1803,6 +1850,7 @@ class YouTubeToolkit:
 
     # --- Trending/Popular Videos API ---
 
+    @deprecated("toolkit.search.trending()")
     def get_trending_videos(self, region_code: str = 'US',
                            category_id: str = None,
                            max_results: int = 25,
@@ -1821,6 +1869,7 @@ class YouTubeToolkit:
         """
         return self._search.get_trending_videos(region_code, category_id, max_results, page_token)
 
+    @deprecated("toolkit.search.trending.by_category()")
     def get_trending_by_category(self, region_code: str = 'US',
                                  language: str = 'en') -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -1867,6 +1916,7 @@ class YouTubeToolkit:
 
     # --- Enhanced Channel Info ---
 
+    @deprecated("toolkit.get.channel()")
     def get_channel_info_full(self, channel_id: str = None,
                               username: str = None,
                               handle: str = None) -> Dict[str, Any]:
