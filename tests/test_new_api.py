@@ -15,13 +15,17 @@ class TestNewAPIImports:
 
         toolkit = YouTubeToolkit()
 
-        # Check new methods exist
-        assert hasattr(toolkit, 'get_video')
+        # Check the 5 core sub-APIs exist
+        assert hasattr(toolkit, 'get')
         assert hasattr(toolkit, 'download')
         assert hasattr(toolkit, 'search')
-        assert hasattr(toolkit, 'comments')
-        assert hasattr(toolkit, 'captions')
-        assert hasattr(toolkit, 'playlist')
+        assert hasattr(toolkit, 'analyze')
+        assert hasattr(toolkit, 'stream')
+        # Spot-check representative sub-API methods
+        assert hasattr(toolkit.get, 'video')
+        assert hasattr(toolkit.analyze, 'comments')
+        assert hasattr(toolkit.get, 'captions')
+        assert hasattr(toolkit.get.playlist, 'urls')
 
     def test_import_filter_classes(self):
         """Test that filter classes can be imported."""
@@ -63,8 +67,8 @@ class TestGetVideoAPI:
 
         toolkit = YouTubeToolkit()
 
-        # Mock the underlying get_video_info method
-        with patch.object(toolkit._get_info, 'get_video_info') as mock:
+        # Mock the underlying handler-level call that get.video routes through
+        with patch.object(toolkit._get_info, 'get_video_info_pytubefix') as mock:
             mock.return_value = {
                 'title': 'Test Video',
                 'duration': 180,
@@ -78,7 +82,7 @@ class TestGetVideoAPI:
                 'like_count': 50000,
             }
 
-            result = toolkit.get_video('https://youtube.com/watch?v=abc123')
+            result = toolkit.get.video('https://youtube.com/watch?v=abc123')
 
             assert isinstance(result, VideoInfo)
             assert result.title == 'Test Video'
@@ -297,14 +301,10 @@ class TestCommentsAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit._comments, 'advanced_get_comments') as mock:
-            mock.return_value = {
-                'comments': [],
-                'total_results': 0,
-                'quota_cost': 1,
-            }
+        with patch.object(toolkit._comments, 'comments') as mock:
+            mock.return_value = CommentResult(comments=[], total_results=0)
 
-            result = toolkit.comments('https://youtube.com/watch?v=abc123')
+            result = toolkit.analyze.comments('https://youtube.com/watch?v=abc123')
 
             assert isinstance(result, CommentResult)
             assert result.total_results == 0
@@ -319,13 +319,10 @@ class TestCaptionsAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit._captions, 'list_captions') as mock:
-            mock.return_value = {'tracks': [], 'quota_cost': 0}
+        with patch.object(toolkit._captions, 'captions') as mock:
+            mock.return_value = CaptionResult(tracks=[])
 
-        with patch.object(toolkit, 'extract_video_id') as mock_id:
-            mock_id.return_value = 'abc123'
-
-            result = toolkit.captions('https://youtube.com/watch?v=abc123')
+            result = toolkit.get.captions('https://youtube.com/watch?v=abc123')
 
             assert isinstance(result, CaptionResult)
 
@@ -339,13 +336,13 @@ class TestPlaylistAPI:
 
         toolkit = YouTubeToolkit()
 
-        with patch.object(toolkit._playlist, 'get_playlist_urls') as mock:
+        with patch.object(toolkit._playlist, 'get_playlist_urls_pytubefix') as mock:
             mock.return_value = [
                 'https://youtube.com/watch?v=abc',
                 'https://youtube.com/watch?v=def',
             ]
 
-            result = toolkit.playlist('https://youtube.com/playlist?list=...')
+            result = toolkit.get.playlist.urls('https://youtube.com/playlist?list=...')
 
             assert isinstance(result, list)
             assert len(result) == 2

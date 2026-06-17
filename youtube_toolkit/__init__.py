@@ -4,7 +4,7 @@ YouTube Toolkit - A comprehensive YouTube information and download toolkit.
 Install with: pip install youtube-toolkit
 Usage: from youtube_toolkit import YouTubeToolkit
 
-Version 1.0.0 - Consolidated API with 5 Core Sub-APIs:
+Version 2.0.0 - Consolidated API with 5 Core Sub-APIs:
     - GET: Retrieve information (video, channel, playlist, comments, chapters)
     - DOWNLOAD: Save content to disk (audio, video, captions, thumbnails)
     - SEARCH: Find content (videos, channels, playlists, trending)
@@ -43,7 +43,7 @@ Quick Start:
 from .api import YouTubeToolkit
 
 __all__ = ["YouTubeToolkit"]
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "Bo-Yu Chen"
 __description__ = "A comprehensive YouTube information and download toolkit"
 
