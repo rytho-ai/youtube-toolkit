@@ -12,7 +12,7 @@ This guide explains how to extend youtube-toolkit with new features while follow
 
 ## Architecture Overview
 
-youtube-toolkit follows a **three-layer architecture**:
+youtube-toolkit follows a **layered architecture**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -22,8 +22,14 @@ youtube-toolkit follows a **three-layer architecture**:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              API Layer (api.py) - YouTubeToolkit            │
-│         Orchestration, fallback logic, unified interface    │
+│         API Layer (api.py) - YouTubeToolkit, the contract   │
+│      Thin delegation: each method is one line to a service  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Service Layer (services/*.py)                  │
+│   Business logic + handler-fallback (core/fallback.py)      │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -33,7 +39,9 @@ youtube-toolkit follows a **three-layer architecture**:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Key Principle**: Sub-APIs call `api.py` methods, NOT handlers directly. This allows for fallback logic and cross-cutting concerns.
+**Key Principles**: Sub-APIs call `api.py` methods, NOT handlers directly; and
+`api.py` methods delegate to a **service** (which owns the handler-fallback),
+NOT to handlers directly. This keeps api.py a stable, thin public contract.
 
 ## Adding New Methods to Existing APIs
 
@@ -67,23 +75,39 @@ def get_video_statistics(self, url: str) -> Dict[str, Any]:
         raise RuntimeError(f"Failed to get statistics: {e}")
 ```
 
-### Step 2: Add API Layer Method (if fallback needed)
+### Step 2: Add the Service Method (where the logic + fallback live)
 
-Add a method in `api.py` if you need fallback between handlers:
+Put the orchestration + fallback in the matching `services/<domain>.py`, using
+the `core/fallback.run_with_fallback` primitive:
+
+```python
+# youtube_toolkit/services/get_info.py
+
+def get_video_statistics(self, url: str) -> Dict[str, Any]:
+    """Get video statistics with fallback."""
+    from ..core.fallback import run_with_fallback
+    return run_with_fallback(
+        [("PyTubeFix", lambda: self._toolkit.pytubefix.get_video_statistics(url)),
+         ("YT-DLP",    lambda: self._toolkit.yt_dlp.get_video_statistics(url))],
+        error_message="All video statistics methods failed",
+        verbose=self._toolkit.verbose,
+    )
+```
+
+### Step 3: Add the API Layer Delegation (the public contract)
+
+Add a **one-line delegation** in `api.py` — this is the stable public method
+other projects import:
 
 ```python
 # youtube_toolkit/api.py
 
 def get_video_statistics(self, url: str) -> Dict[str, Any]:
     """Get video statistics with fallback."""
-    try:
-        return self.pytubefix.get_video_statistics(url)
-    except Exception:
-        # Fallback to yt-dlp
-        return self.yt_dlp.get_video_statistics(url)
+    return self._get_info.get_video_statistics(url)
 ```
 
-### Step 3: Expose in Sub-API
+### Step 4: Expose in Sub-API
 
 Add the user-facing method in the appropriate Sub-API:
 
@@ -106,7 +130,7 @@ class GetAPI:
         return self._toolkit.get_video_statistics(url)
 ```
 
-### Step 4: Add Tests
+### Step 5: Add Tests
 
 ```python
 # tests/test_new_feature.py

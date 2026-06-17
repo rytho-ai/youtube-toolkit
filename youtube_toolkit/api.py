@@ -1,8 +1,15 @@
 """
-Main YouTube Toolkit interface.
+api.py — YouTubeToolkit, the top-level entry point (★ load-bearing).
 
-This module provides a unified interface that combines all handlers
-and implements fallback logic for robust YouTube operations.
+Thin delegation layer and stable public contract: owns the handlers
+(pytubefix / yt-dlp / YouTube API) + anti-detection, wires up the five
+sub-APIs (get/download/search/analyze/stream), and exposes the public
+methods that each delegate one-line to a domain service in
+youtube_toolkit/services/. Business logic and handler-fallback live in the
+services, not here — this file is what other projects import, so its method
+signatures are the frozen contract.
+
+Reads: handlers.* · services.* (domain logic) · utils.anti_detection · core dataclasses
 """
 
 from typing import Optional, List, Dict, Any, Union

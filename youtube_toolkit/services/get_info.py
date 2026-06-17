@@ -11,6 +11,7 @@ youtube_toolkit.core.video_info.VideoInfo.
 """
 
 from typing import List, Dict, Any
+from ..core.fallback import run_with_fallback
 from ..core.video_info import VideoInfo
 
 
@@ -19,20 +20,15 @@ class GetInfoService:
         self._toolkit = toolkit
 
     def get_video_info(self, url: str) -> Dict[str, Any]:
-        # Try pytubefix first (usually most reliable)
-        try:
-            return self._toolkit.pytubefix.get_video_info(url)
-        except Exception as e:
-            print(f"PyTubeFix failed: {e}")
-
-        # Fallback to yt-dlp
-        try:
-            return self._toolkit.yt_dlp.get_video_info(url)
-        except Exception as e:
-            print(f"YT-DLP failed: {e}")
-
-        # If both fail, raise error
-        raise RuntimeError("All video info extraction methods failed")
+        # Try pytubefix first (usually most reliable), then fall back to yt-dlp.
+        return run_with_fallback(
+            [
+                ("PyTubeFix", lambda: self._toolkit.pytubefix.get_video_info(url)),
+                ("YT-DLP", lambda: self._toolkit.yt_dlp.get_video_info(url)),
+            ],
+            error_message="All video info extraction methods failed",
+            verbose=self._toolkit.verbose,
+        )
 
     def get_available_formats(self, url: str) -> Dict[str, Any]:
         # Try pytubefix first

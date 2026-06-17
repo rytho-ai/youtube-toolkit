@@ -1,18 +1,22 @@
 """
-Sub-API classes for action-based API design.
+sub_apis.py — action-based sub-API facades (★ load-bearing).
 
-This module provides the five core action APIs (v1.0 consolidated):
+The five user-facing action APIs (v1.0 consolidated) plus channel/playlist/
+comments helpers:
 - GetAPI: Retrieve information (video, channel, playlist, etc.)
-- DownloadAPI: Save content to disk (audio, video, captions)
+- DownloadAPI: Save content to disk (audio, video, captions); async facades
+  (audio_async/...) and the parallel many() live here too
 - SearchAPI: Find content (videos, channels, playlists)
 - AnalyzeAPI: Analyze content (metadata, engagement, sponsorblock)
 - StreamAPI: Stream content to buffer and manage live streams
 
-Each sub-API is callable for smart defaults and has explicit methods for control.
+Each sub-API is callable for smart defaults and has explicit methods for control,
+and returns the same types as the legacy API (download() -> DownloadResult,
+search() -> SearchResult). Every method routes through api.py (YouTubeToolkit),
+never calling handlers directly, so fallback / rate-limit / logging stay
+centralized in one place.
 
-The callable methods return the same types as the legacy API for backward compatibility:
-- download() returns DownloadResult
-- search() returns SearchResult
+Reads: youtube_toolkit.api.YouTubeToolkit (back-ref) · core dataclasses
 """
 
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING

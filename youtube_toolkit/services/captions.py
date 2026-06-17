@@ -11,6 +11,7 @@ youtube_toolkit.core.captions.* (filters, result, converter, analyzer).
 """
 
 from typing import Optional, List, Dict, Any
+from ..core.fallback import run_with_fallback
 from ..core.captions import CaptionResult, CaptionFilters, CaptionTrack
 
 
@@ -26,25 +27,16 @@ class CaptionsService:
             return {"error": str(e)}
 
     def download_captions(self, url: str, language_code: str = 'en', output_path: str = None) -> str:
-        # Try PyTubeFix first (most reliable)
-        try:
-            return self._toolkit.pytubefix.download_captions(url, language_code, output_path)
-        except Exception as e:
-            print(f"PyTubeFix captions failed: {e}")
-
-        # Try YT-DLP second
-        try:
-            return self._toolkit.yt_dlp.download_captions(url, language_code, output_path)
-        except Exception as e:
-            print(f"YT-DLP captions failed: {e}")
-
-        # Try YouTube API last
-        try:
-            return self._toolkit.youtube_api.download_captions(url, language_code, output_path)
-        except Exception as e:
-            print(f"YouTube API captions failed: {e}")
-
-        raise RuntimeError("All caption download methods failed")
+        # Try PyTubeFix first (most reliable), then YT-DLP, then YouTube API.
+        return run_with_fallback(
+            [
+                ("PyTubeFix captions", lambda: self._toolkit.pytubefix.download_captions(url, language_code, output_path)),
+                ("YT-DLP captions", lambda: self._toolkit.yt_dlp.download_captions(url, language_code, output_path)),
+                ("YouTube API captions", lambda: self._toolkit.youtube_api.download_captions(url, language_code, output_path)),
+            ],
+            error_message="All caption download methods failed",
+            verbose=self._toolkit.verbose,
+        )
 
     def list_captions(self, url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         return self._toolkit.youtube_api.advanced_list_captions(url, filters)

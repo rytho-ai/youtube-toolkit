@@ -1,0 +1,802 @@
+<!doctype html>
+<!--
+═══════════════════════════════════════════════════════════════════════════
+  CODEBASE MAP · GROUNDING AUDIT
+  Last audit: 2026-06-17
+═══════════════════════════════════════════════════════════════════════════
+
+  This file is generated commentary — the codebase is the source of truth.
+  Every factual claim below was checked against youtube_toolkit/ on the audit
+  date. Drift will happen as code evolves; re-audit when content stales.
+
+  ✓ VERIFIED (mechanically grep'd against the source)
+    • LOC: per-file line counts match `wc -l` (api.py 1966, sub_apis.py 1575,
+      yt_dlp_handler 2306, youtube_api_handler 2008, pytubefix_handler 1659,
+      scrapetube_handler 596, core/search 627, core/captions/models 407,
+      services/playlist 411, services/download 357, core/fallback 90, etc.)
+    • Facade: 10 *API classes in sub_apis.py (ChannelGetAPI, PlaylistGetAPI,
+      CommentsGetAPI, GetAPI, DownloadAPI, SearchAPI, TrendingSearchAPI,
+      AnalyzeAPI, LiveStreamSubAPI, StreamAPI). 74 `self._toolkit.<x>`
+      delegations. 0 handler-direct calls from sub_apis (gate holds).
+    • Contract: 114 public methods in api.py (def at col 4, lowercase). 0
+      `except Exception` in api.py. 9 service imports. Only handler-direct
+      call in api.py is extract_video_id (lines 261/267) — the one exception.
+    • Services: 9 *Service classes, each stores self._toolkit back-ref. 112
+      `self._toolkit.<handler>` runtime calls. channel.py(2)+search.py(1) = 3
+      direct `from ..handlers.scrapetube_handler import` statements.
+    • core/fallback.py: defines run_with_fallback + log_failure (the primitive
+      + logging seam). core/captions/__init__.py is a barrel re-exporting
+      models + convert + analytics.
+    • Parallel/async: download.py has download_many(max_workers, ThreadPool-
+      Executor, sequential when <=1); sub_apis DownloadAPI has audio_async/
+      video_async/many_async; yt_dlp_handler references concurrent_fragments
+      (19×); request_interceptor.rate_limit uses threading.Lock (thread-safe).
+    • Edges: handlers->core (search/captions/comments), handlers->utils
+      (anti_detection/request_interceptor/helpers), services->core
+      (video_info/download/search/comments/captions), api->utils.anti_detection
+      + core dataclasses, sub_apis->core dataclasses — all grep-confirmed.
+
+  ⚠ FIXED in this revision (inaccuracies caught during audit)
+    1. fallback adoption status. api.py has 0 except clauses — the fallback was
+       moved DOWN into the services. core/fallback.py's run_with_fallback is now
+       ADOPTED for the 2 canonical "try handlers in order -> raise if all fail"
+       sites (get_info.get_video_info, captions.download_captions). The other
+       ~8 fallback-LIKE methods (get_available_formats, get_heatmap,
+       get_playlist_urls, download_audio/video, search_videos, advanced_search,
+       advanced_download_captions) are a DIFFERENT shape — result-guard
+       (`if result:`), terminal default-return instead of raise, runtime-chosen
+       order, or accumulator — and are intentionally LEFT hand-rolled rather
+       than forced onto the primitive (rule ④: don't over-generalize).
+    2. Public-method count is 114 (brief said ~113); reported as 114.
+
+  ⚖ JUDGMENT (not mechanically verifiable — interpretation)
+    • Layer assignment (facade=ui / contract+services=state / handlers+core+
+      utils=foundation) is an interpretive mapping onto the spec's 3-layer
+      model; the code's own model is "4 layers + foundation/core".
+    • "god class -> thin delegation layer" narrative is the stated refactor
+      intent (per file headers), read as judgment not a measured before/after.
+    • One-line domain/file roles are paraphrased from each file's head -8
+      header; wording is editorial.
+    • Anatomy curation (which 4 subsystems earn a graph) is a rule-④ call.
+
+  TO RE-AUDIT
+    • LOC: `find youtube_toolkit -name '*.py' | xargs wc -l | sort -n`
+    • Facade gate: `grep -c "self\._toolkit\." youtube_toolkit/sub_apis.py`
+      and `grep -c "self\._toolkit\.\(yt_dlp\|pytubefix\|youtube_api\|scrapetube\)" sub_apis.py` (=0)
+    • api.py contract: `grep -cE "^    def [a-z]" api.py`; `grep -c "except Exception" api.py`
+    • fallback wiring: `grep -rn "run_with_fallback" youtube_toolkit/services/` (adopted in get_info + captions; other fallback-like methods intentionally left)
+    • scrapetube direct: `grep -rn "scrapetube_handler import" youtube_toolkit/services/`
+═══════════════════════════════════════════════════════════════════════════
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>youtube-toolkit — codebase map</title>
+<style>
+:root{
+  --bg:#f7f4ec; --panel:#fffdf8; --ink:#2a211c; --muted:#8a7d6e; --line:#e7e0d2;
+  --accent:#10b981; --caramel:#b5894e; --rose:#f43f5e;
+  --foundation:#6c8fb5; --state:#7a9e6e; --ui:#b5894e;
+  --radius:14px;
+  --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;font-size:15px;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+code{font-family:var(--mono);font-size:.9em}
+.layout{display:grid;grid-template-columns:250px 1fr;max-width:1240px;margin:0 auto}
+nav.side{position:sticky;top:0;height:100vh;padding:24px 18px;border-right:1px solid var(--line);overflow:auto}
+main{padding:36px 44px 120px;min-width:0}
+section{margin-bottom:60px;scroll-margin-top:24px}
+h1{font-size:30px;margin:0 0 8px;letter-spacing:-.02em}
+h2{font-size:21px;margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:14px;margin:0 0 8px}
+.lede{color:var(--muted);font-size:15px;max-width:70ch;margin:0 0 18px}
+.small{font-size:12.5px}
+.muted{color:var(--muted)}
+/* sidebar */
+nav.side .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px}
+nav.side .brand .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+.lang-toggle{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.lang-btn{border:0;background:var(--panel);color:var(--muted);font-size:11px;font-weight:700;padding:3px 8px;cursor:pointer;font-family:var(--sans)}
+.lang-btn.active{background:var(--ink);color:#fff}
+nav.side .subdesc{font-size:11.5px;color:var(--muted);margin:8px 2px 16px;line-height:1.45}
+nav.side a.nl{display:block;padding:5px 10px;border-radius:8px;font-size:13px;color:var(--muted);margin:1px 0}
+nav.side a.nl:hover{background:#00000006;color:var(--ink)}
+nav.side a.nl.active{background:#10b9811a;color:#0c7a59;font-weight:600}
+nav.side a.indent{padding-left:22px;font-size:12.5px}
+nav.side .subhead{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--caramel);font-weight:700;margin:18px 10px 4px;padding-top:14px;border-top:1px dashed var(--line)}
+nav.side .meta{margin-top:24px;padding-top:14px;border-top:1px dashed var(--line);font-size:10.5px;color:var(--caramel);line-height:1.6}
+nav.side .meta code{font-size:10px}
+/* callout */
+.callout{background:#10b9810f;border:1px solid #10b98133;border-left:3px solid var(--accent);border-radius:10px;padding:11px 15px;font-size:13.5px;margin:14px 0}
+.callout b{color:#0c7a59}
+/* layers cards (tour) */
+.layers{display:flex;flex-direction:column;gap:8px;margin:18px 0}
+.lcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px 12px 20px;position:relative;cursor:pointer;transition:transform .12s}
+.lcard:hover{transform:translateX(3px)}
+.lcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;border-radius:12px 0 0 12px}
+.lcard.ui::before{background:var(--ui)}
+.lcard.state::before{background:var(--state)}
+.lcard.foundation::before{background:var(--foundation)}
+.lcard .lname{font-weight:700;font-size:14px}
+.lcard .ltag{font-size:11px;color:var(--muted);margin-left:6px}
+.lcard .lchips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chip{font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--line);padding:2px 8px;border-radius:7px}
+/* architecture */
+.archdiag{display:flex;flex-direction:column;gap:4px}
+.archlayer{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 18px 13px 22px}
+.archlayer::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;border-radius:14px 0 0 14px}
+.archlayer.foundation::before{background:var(--foundation)}
+.archlayer.state::before{background:var(--state)}
+.archlayer.ui::before{background:var(--ui)}
+.archlayer .alabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.12em;font-weight:700;color:var(--caramel);margin-bottom:8px}
+.archlayer .achips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}
+.archlayer .adesc{font-size:13px;line-height:1.55}
+.archlayer .adesc code{background:#00000008;padding:0 4px;border-radius:3px}
+.archconn{display:flex;gap:24px;padding:2px 24px 2px 26px;font-size:11.5px;color:var(--muted)}
+.archconn .arrow{color:var(--caramel);font-weight:700}
+/* graph */
+.graphwrap{display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start;margin:14px 0}
+svg.graph{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.node{cursor:grab;touch-action:none}
+.node.dragging{cursor:grabbing}
+.node rect{transition:filter .12s}
+.node:hover rect{filter:brightness(1.07)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;font-size:13px;min-height:120px}
+.panel h3{font-family:var(--mono);font-size:13px;color:var(--ink)}
+.panel .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--caramel);font-weight:700;margin:10px 0 2px}
+.panel p{margin:0 0 4px}
+.panel .hop{display:inline-block;margin-top:10px;color:var(--rose);font-weight:700;font-size:12.5px}
+.panel .legend{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px;display:flex;flex-direction:column;gap:4px}
+.panel .legend .li{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)}
+.panel .legend .sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
+.panel .hint{font-style:italic;font-size:11.5px;color:var(--muted);margin-top:10px}
+/* rules */
+.rules{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.rule{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:13px 15px;display:flex;gap:11px}
+.rule .n{flex:0 0 26px;height:26px;border-radius:8px;background:#10b9811a;color:#0c7a59;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
+.rule .rt{font-weight:700;font-size:13.5px;margin-bottom:2px}
+.rule .rd{font-size:12.5px;color:var(--muted);line-height:1.5}
+/* module map */
+.toolbar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+#q{flex:1;max-width:380px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-family:var(--sans);font-size:13px;color:var(--ink)}
+.count{font-size:12px;color:var(--muted)}
+details.dom{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
+details.dom>summary{list-style:none;cursor:pointer;padding:11px 15px;display:flex;align-items:center;gap:10px;font-weight:600}
+details.dom>summary::-webkit-details-marker{display:none}
+details.dom>summary .caret{transition:transform .15s;color:var(--muted);font-size:11px}
+details.dom[open]>summary .caret{transform:rotate(90deg)}
+details.dom>summary .dpath{font-family:var(--mono);font-size:11.5px;color:var(--muted);font-weight:400}
+details.dom>summary .ddot{margin-left:auto;width:9px;height:9px;border-radius:50%}
+.dombody{padding:4px 15px 14px;border-top:1px solid var(--line)}
+.domblurb{font-size:12.5px;color:var(--muted);margin:8px 0 10px}
+.file{display:grid;grid-template-columns:200px 54px 1fr;gap:10px;align-items:baseline;padding:4px 0;font-size:13px;border-top:1px dashed var(--line)}
+.file .fn{font-family:var(--mono);font-size:12px}
+.file .loc{font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted);text-align:right}
+.file .fr{font-size:12.5px;color:var(--ink)}
+.file .star{color:var(--accent);font-weight:800}
+/* anatomy index */
+.anat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.anat-card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 15px 13px 18px;transition:transform .12s,box-shadow .12s}
+.anat-card:hover{transform:translateY(-2px);box-shadow:0 12px 28px -20px rgba(42,33,28,.4)}
+.anat-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:12px 0 0 12px}
+.anat-card.foundation::before{background:var(--foundation)}
+.anat-card.state::before{background:var(--state)}
+.anat-card.ui::before{background:var(--ui)}
+.anat-card .acname{font-family:var(--mono);font-size:13px;font-weight:700;margin:4px 0}
+.anat-card .acblurb{font-size:12.5px;color:var(--muted);line-height:1.5}
+.anat-card .acjump{color:var(--rose);font-weight:700;font-size:12.5px;margin-top:6px;display:inline-block}
+.layer-chip{display:inline-block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:5px;color:#fff;margin-right:8px;font-weight:700;vertical-align:2px}
+.layer-chip.foundation{background:var(--foundation)}
+.layer-chip.state{background:var(--state)}
+.layer-chip.ui{background:var(--ui)}
+.warnbox{background:#f43f5e0d;border:1px solid #f43f5e33;border-left:3px solid var(--rose);border-radius:10px;padding:11px 15px;font-size:13px;margin:14px 0}
+.warnbox b{color:#be1834}
+@media(max-width:980px){
+  .layout{grid-template-columns:1fr}
+  nav.side{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}
+  .graphwrap{grid-template-columns:1fr}
+  .rules,.anat-grid{grid-template-columns:1fr}
+  .file{grid-template-columns:150px 44px 1fr}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav class="side">
+    <div class="brand"><span class="dot"></span><span>youtube-toolkit</span>
+      <div class="lang-toggle">
+        <button class="lang-btn active" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="zh">中</button>
+      </div>
+    </div>
+    <div class="subdesc" data-t="nav_subdesc">Multi-backend YouTube info & download toolkit, deep-module refactor.</div>
+    <a class="nl" href="#tour" data-t="nav_tour">Tour</a>
+    <a class="nl" href="#architecture" data-t="nav_arch">Architecture</a>
+    <a class="nl" href="#codebase" data-t="nav_cb">Codebase map</a>
+    <a class="nl" href="#rules" data-t="nav_rules">Design rules</a>
+    <a class="nl" href="#map" data-t="nav_map">Module map</a>
+    <a class="nl" href="#anatomies-overview" data-t="nav_anat">Anatomies</a>
+    <div class="subhead" data-t="nav_anat_sub">Anatomies</div>
+    <a class="nl indent" href="#delegation-anatomy" data-t="nav_a1">4-layer delegation</a>
+    <a class="nl indent" href="#fallback-anatomy" data-t="nav_a2">Fallback primitive</a>
+    <a class="nl indent" href="#captions-anatomy" data-t="nav_a3">Captions sub-package</a>
+    <a class="nl indent" href="#parallel-anatomy" data-t="nav_a4">Parallel / async download</a>
+    <div class="subhead" data-t="nav_conv_sub">More</div>
+    <a class="nl" href="#conventions" data-t="nav_conv">Conventions</a>
+    <div class="meta">
+      <span data-t="meta_gen">Generated from</span> <code>youtube_toolkit/</code><br>
+      <span data-t="meta_upd">Updated</span> 2026-06-17
+    </div>
+  </nav>
+  <main>
+
+    <section id="tour">
+      <h1 data-t="tour_title">youtube-toolkit — codebase map</h1>
+      <p class="lede" data-t="tour_lede"></p>
+      <div class="callout"><b data-t="howread_b">How to read this:</b> <span data-t="howread"></span></div>
+      <div class="layers" id="layers"></div>
+      <p class="small muted" data-t="stack_note"></p>
+    </section>
+
+    <section id="architecture">
+      <h2 data-t="arch_title">Architecture — 4 layers over a foundation</h2>
+      <p class="lede" data-t="arch_lede"></p>
+      <div class="archdiag" id="archdiag"></div>
+    </section>
+
+    <section id="codebase">
+      <h2 data-t="cb_title">Codebase map — every domain at a glance</h2>
+      <p class="lede" data-t="cb_lede"></p>
+      <div class="graphwrap">
+        <svg class="graph" id="cbGraph" viewBox="0 0 760 380"></svg>
+        <div class="panel" id="cbPanel"></div>
+      </div>
+      <div class="callout"><b data-t="cb_dir_b">How to read direction:</b> <span data-t="cb_dir"></span></div>
+    </section>
+
+    <section id="rules">
+      <h2 data-t="rules_title">Design rules — the bar every module clears</h2>
+      <p class="lede" data-t="rules_lede"></p>
+      <div class="rules" id="rulesGrid"></div>
+    </section>
+
+    <section id="map">
+      <h2 data-t="map_title">Module map — search & expand</h2>
+      <p class="lede" data-t="map_lede"></p>
+      <div class="toolbar">
+        <input id="q" data-t-placeholder="map_ph" placeholder="Filter modules & files…">
+        <span class="count" id="count"></span>
+      </div>
+      <div id="domains"></div>
+    </section>
+
+    <section id="anatomies-overview">
+      <h2 data-t="anat_title">Anatomies — 4 worked examples</h2>
+      <p class="lede" data-t="anat_lede"></p>
+      <div class="anat-grid" id="anatGrid"></div>
+      <p class="small muted" data-t="anat_why"></p>
+    </section>
+
+    <section id="delegation-anatomy">
+      <h2><span class="layer-chip state">contract</span><span data-t="a1_h">4-layer delegation flow</span></h2>
+      <p class="lede" data-t="a1_lede"></p>
+      <div class="graphwrap">
+        <svg class="graph" id="delGraph" viewBox="0 0 760 300"></svg>
+        <div class="panel" id="delPanel"></div>
+      </div>
+      <div class="callout"><b data-t="a1_call_b">Teaching point:</b> <span data-t="a1_call"></span></div>
+    </section>
+
+    <section id="fallback-anatomy">
+      <h2><span class="layer-chip foundation">foundation</span><span data-t="a2_h">Fallback primitive</span></h2>
+      <p class="lede" data-t="a2_lede"></p>
+      <div class="warnbox"><b data-t="a2_warn_b">Status:</b> <span data-t="a2_warn"></span></div>
+      <div class="graphwrap">
+        <svg class="graph" id="fbGraph" viewBox="0 0 760 260"></svg>
+        <div class="panel" id="fbPanel"></div>
+      </div>
+      <div class="callout"><b data-t="a2_call_b">Teaching point:</b> <span data-t="a2_call"></span></div>
+    </section>
+
+    <section id="captions-anatomy">
+      <h2><span class="layer-chip foundation">foundation</span><span data-t="a3_h">Captions sub-package</span></h2>
+      <p class="lede" data-t="a3_lede"></p>
+      <div class="graphwrap">
+        <svg class="graph" id="capGraph" viewBox="0 0 760 280"></svg>
+        <div class="panel" id="capPanel"></div>
+      </div>
+      <div class="callout"><b data-t="a3_call_b">Teaching point:</b> <span data-t="a3_call"></span></div>
+    </section>
+
+    <section id="parallel-anatomy">
+      <h2><span class="layer-chip state">service</span><span data-t="a4_h">Parallel / async download</span></h2>
+      <p class="lede" data-t="a4_lede"></p>
+      <div class="graphwrap">
+        <svg class="graph" id="parGraph" viewBox="0 0 760 300"></svg>
+        <div class="panel" id="parPanel"></div>
+      </div>
+      <div class="callout"><b data-t="a4_call_b">Teaching point:</b> <span data-t="a4_call"></span></div>
+    </section>
+
+    <section id="conventions">
+      <h2 data-t="conv_title">Conventions — the load-bearing rules</h2>
+      <p class="lede" data-t="conv_lede"></p>
+      <div id="convList"></div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* ============================== i18n ============================== */
+const T = {
+  en:{
+    nav_subdesc:"Multi-backend YouTube info & download toolkit, deep-module refactor.",
+    nav_tour:"Tour", nav_arch:"Architecture", nav_cb:"Codebase map", nav_rules:"Design rules",
+    nav_map:"Module map", nav_anat:"Anatomies", nav_anat_sub:"Anatomies", nav_conv_sub:"More", nav_conv:"Conventions",
+    nav_a1:"4-layer delegation", nav_a2:"Fallback primitive", nav_a3:"Captions sub-package", nav_a4:"Parallel / async download",
+    meta_gen:"Generated from", meta_upd:"Updated",
+    tour_title:"youtube-toolkit — codebase map",
+    tour_lede:"A multi-backend YouTube information & download toolkit (pytubefix · yt-dlp · YouTube Data API · scrapetube) that stays reliable by automatically falling back between handlers. It recently went through a deep-module refactor: <code>api.py</code> changed from a god class into a thin delegation layer and stable public contract, business logic sank into <code>services/</code>, the fallback decision was extracted into <code>core/fallback.py</code>, <code>captions.py</code> was split into the <code>core/captions/</code> sub-package, and opt-in parallel/async downloading was added.",
+    howread_b:"How to read this:",
+    howread:"Start with the <b>Architecture</b> (the 4 layers). Use the <b>Codebase map</b> to see real import edges between domains — click a node, drag it around. The <b>Module map</b> lists every file with a one-line role (★ = read first). The <b>Anatomies</b> zoom into the four subsystems most worth understanding.",
+    stack_note:"Python · backends: pytubefix · yt-dlp · YouTube Data API v3 · scrapetube · ~15k LOC across 33 modules · packaged with uv.",
+    arch_title:"Architecture — 4 layers over a foundation",
+    arch_lede:"Requests flow top to bottom: a user-facing facade narrows to a stable contract, the contract delegates one-line into domain services that hold the real logic, and the services drive the backend handlers. Everything rests on a shared foundation of data classes + utilities.",
+    cb_title:"Codebase map — every domain at a glance",
+    cb_lede:"Each box is a source domain; arrows are real import / call edges grep'd from the source. Click a node for its role + wires; drag to rearrange.",
+    cb_dir_b:"How to read direction:",
+    cb_dir:"Arrows go consumer → consumed. <code>sub_apis</code> delegates to <code>api.py</code>; <code>api.py</code> imports <code>services</code>; <code>services</code> reach the <code>handlers</code> via a toolkit back-ref; <code>handlers</code> and <code>services</code> both depend on <code>core</code> + <code>utils</code>.",
+    rules_title:"Design rules — the bar every module clears",
+    rules_lede:"The eight deep-module principles this refactor is steering toward (Ousterhout, A Philosophy of Software Design).",
+    map_title:"Module map — search & expand",
+    map_lede:"Every domain and file with a one-line role. ★ marks load-bearing read-first files. Type to filter.",
+    map_ph:"Filter modules & files…",
+    anat_title:"Anatomies — 4 worked examples",
+    anat_lede:"The four subsystems a new reader most needs in their head: the delegation spine, the fallback primitive, the captions split, and the opt-in concurrency path.",
+    anat_why:"Why these four? They carry the refactor's intent. Thin domains (utils, the data-class files) stay as module-map rows — per rule ④, no structure-theatre.",
+    a1_h:"4-layer delegation flow",
+    a1_lede:"A request enters at the action facade (<code>sub_apis.py</code>), which delegates to a public method on <code>api.py</code>, which delegates one-line to a domain <code>*Service</code>, which orchestrates the backend <code>*Handler</code>s (reached through a back-reference to the toolkit). Each hop is deliberately narrow.",
+    a1_call_b:"Teaching point:",
+    a1_call:"<code>api.py</code> is a <b>narrow, stable door</b> — 114 public methods, each one line. The complexity lives down in <code>services/</code>. Other projects import <code>api.py</code> signatures, so they are frozen; you can rewrite a service body without breaking callers.",
+    a2_h:"Fallback primitive",
+    a2_lede:"<code>core/fallback.py</code> defines one primitive — <code>run_with_fallback(attempts, error_message)</code> — that tries each (label, callable) in order, logs each failure through <code>log_failure</code>, and raises a RuntimeError only when every attempt fails. It lives in <code>core/</code> so any service can reach it without an upward dependency.",
+    a2_warn_b:"Status:",
+    a2_warn:"<b>Adopted for the canonical case.</b> The fallback moved out of <code>api.py</code> (now 0 <code>except</code> clauses) down into the services. <code>run_with_fallback</code> is now wired into the 2 canonical \"try handlers in order → raise if all fail\" methods (<code>get_video_info</code>, <code>download_captions</code>). ~8 fallback-<i>like</i> methods use a different shape — result-guard (<code>if result:</code>), default-return instead of raise, or runtime-chosen order — and are intentionally left hand-rolled rather than forced onto the primitive (rule ④).",
+    a2_call_b:"Teaching point:",
+    a2_call:"One owner for one decision. The intent is to replace the ~69 hand-written try/except blocks (the original god-class pattern) with a single tested seam — so logging, verbosity, and ordering live in exactly one place.",
+    a3_h:"Captions sub-package",
+    a3_lede:"<code>captions.py</code> was split into a folder of three single-responsibility files — <code>models.py</code> (enums + dataclasses), <code>convert.py</code> (SRT ↔ VTT/TXT/SBV/TTML), <code>analytics.py</code> (language / reading-speed / quality scoring) — behind a barrel <code>__init__.py</code> that re-exports everything so the historical <code>youtube_toolkit.core.captions</code> import path stays byte-for-byte identical.",
+    a3_call_b:"Teaching point:",
+    a3_call:"A barrel module lets you split a file without touching a single caller. <code>convert.py</code> and <code>analytics.py</code> depend only on <code>models.py</code>; pure, stateless, easy to test in isolation.",
+    a4_h:"Parallel / async download",
+    a4_lede:"Three opt-in concurrency pieces, single-owned: <code>DownloadService.download_many(max_workers)</code> runs sequentially when <code>max_workers ≤ 1</code> and fans out with a bounded ThreadPoolExecutor otherwise; <code>DownloadAPI</code> exposes <code>audio_async / video_async / many_async</code> facades; the yt-dlp handler can stream with <code>concurrent_fragments</code>.",
+    a4_call_b:"Teaching point:",
+    a4_call:"Concurrency is conservative: opt-in, default sequential, bounded by a worker cap, and even when parallel it still funnels through the thread-safe <code>rate_limit</code> decorator (guarded by a <code>threading.Lock</code>). Async makes <i>many</i> downloads overlap — it does not make any single download faster.",
+    conv_title:"Conventions — the load-bearing rules",
+    conv_lede:"Project rules from CLAUDE.md. Several are enforceable: a grep can prove the gate holds.",
+    panel_def_h3:"Click a node",
+    panel_def_body:"Select any box to see its role, what it wires to, and what depends on it.",
+    panel_hint:"💡 Drag any node to rearrange · the lines follow.",
+    k_role:"role", k_wires:"wires", k_usedby:"used by", view_anat:"→ View anatomy", k_none:"—"
+  },
+  zh:{
+    nav_subdesc:"多後端 YouTube 資訊與下載工具，deep-module 重構版。",
+    nav_tour:"導覽", nav_arch:"架構", nav_cb:"程式碼地圖", nav_rules:"設計守則",
+    nav_map:"模組地圖", nav_anat:"解剖", nav_anat_sub:"解剖", nav_conv_sub:"更多", nav_conv:"慣例",
+    nav_a1:"四層委派", nav_a2:"Fallback 原語", nav_a3:"Captions 子套件", nav_a4:"並行／非同步下載",
+    meta_gen:"產生自", meta_upd:"更新於",
+    tour_title:"youtube-toolkit — 程式碼地圖",
+    tour_lede:"一個多後端的 YouTube 資訊與下載工具（pytubefix · yt-dlp · YouTube Data API · scrapetube），靠在各 handler 之間自動 fallback 維持穩定。最近完成 deep-module 重構：<code>api.py</code> 從 god class 變成「薄委派層／穩定公開契約」，業務邏輯下沉到 <code>services/</code>，fallback 決策抽成 <code>core/fallback.py</code>，<code>captions.py</code> 拆成 <code>core/captions/</code> 子套件，並加入 opt-in 的並行／非同步下載。",
+    howread_b:"如何閱讀：",
+    howread:"先看<b>架構</b>（四層）。用<b>程式碼地圖</b>看 domain 之間真實的 import 邊 — 點節點、可拖曳。<b>模組地圖</b>列出每個檔案一句角色（★ = 先讀）。<b>解剖</b>放大四個最值得理解的子系統。",
+    stack_note:"Python · 後端：pytubefix · yt-dlp · YouTube Data API v3 · scrapetube · 33 個模組約 1.5 萬行 · 以 uv 打包。",
+    arch_title:"架構 — 基座之上的四層",
+    arch_lede:"請求由上而下流動：使用者面向的門面收斂到穩定契約，契約一行委派到持有真實邏輯的 domain service，service 再驅動後端 handler。一切建立在共用的 dataclass 與 utils 基座上。",
+    cb_title:"程式碼地圖 — 一眼看盡每個 domain",
+    cb_lede:"每個方塊是一個原始碼 domain；箭頭是從原始碼 grep 出的真實 import／呼叫邊。點節點看角色與連線；可拖曳重排。",
+    cb_dir_b:"方向怎麼讀：",
+    cb_dir:"箭頭由「使用者 → 被使用者」。<code>sub_apis</code> 委派到 <code>api.py</code>；<code>api.py</code> import <code>services</code>；<code>services</code> 透過 toolkit back-ref 觸及 <code>handlers</code>；<code>handlers</code> 與 <code>services</code> 都依賴 <code>core</code> 與 <code>utils</code>。",
+    rules_title:"設計守則 — 每個模組要達到的標準",
+    rules_lede:"這次重構所朝向的八條 deep-module 原則（Ousterhout《A Philosophy of Software Design》）。",
+    map_title:"模組地圖 — 搜尋與展開",
+    map_lede:"每個 domain 與檔案附一句角色。★ 標記承重、先讀的檔案。輸入即可過濾。",
+    map_ph:"過濾模組與檔案…",
+    anat_title:"解剖 — 四個範例",
+    anat_lede:"新讀者最需要放進腦中的四個子系統：委派主幹、fallback 原語、captions 拆分，與 opt-in 並行路徑。",
+    anat_why:"為何是這四個？它們承載重構的意圖。較薄的 domain（utils、各 dataclass 檔）留在模組地圖列 — 依守則④，不做結構表演。",
+    a1_h:"四層委派流",
+    a1_lede:"請求由 action 門面（<code>sub_apis.py</code>）進入，委派到 <code>api.py</code> 的公開方法，再一行委派到 domain <code>*Service</code>，最後由 service 編排後端 <code>*Handler</code>（透過對 toolkit 的 back-ref 觸及）。每一跳都刻意收窄。",
+    a1_call_b:"教學點：",
+    a1_call:"<code>api.py</code> 是一道<b>窄而穩的門</b> — 114 個公開方法、每個一行。複雜度藏在 <code>services/</code>。其他專案 import <code>api.py</code> 的簽名，所以簽名被凍結；你可以改寫 service 內部而不破壞呼叫端。",
+    a2_h:"Fallback 原語",
+    a2_lede:"<code>core/fallback.py</code> 定義一個原語 — <code>run_with_fallback(attempts, error_message)</code> — 依序嘗試每個 (label, callable)，透過 <code>log_failure</code> 記錄每次失敗，只有全部失敗才丟出 RuntimeError。它放在 <code>core/</code>，任何 service 都能取用而不形成向上依賴。",
+    a2_warn_b:"狀態：",
+    a2_warn:"<b>canonical 情況已採用。</b>fallback 已從 <code>api.py</code>（現在 0 個 <code>except</code>）移到 services 層。<code>run_with_fallback</code> 已接上 2 個 canonical「依序試 handler → 全失敗才 raise」的方法（<code>get_video_info</code>、<code>download_captions</code>）。另約 8 個 fallback-<i>like</i> 方法是不同形狀 — 結果守衛（<code>if result:</code>）、終端回傳預設而非 raise、或 runtime 決定順序 — 刻意保留手刻，不硬塞進原語（rule ④ 不過度抽象）。",
+    a2_call_b:"教學點：",
+    a2_call:"一個決策只有一個 owner。意圖是用單一、可測的接縫取代原本約 69 處手刻的 try/except（god class 時期的型態）— 讓 logging、verbosity、順序都集中於一處。",
+    a3_h:"Captions 子套件",
+    a3_lede:"<code>captions.py</code> 拆成三個單一職責檔案的資料夾 — <code>models.py</code>（enum + dataclass）、<code>convert.py</code>（SRT ↔ VTT/TXT/SBV/TTML）、<code>analytics.py</code>（語言／閱讀速度／品質評分）— 並以 barrel <code>__init__.py</code> 重新匯出全部，使原本的 <code>youtube_toolkit.core.captions</code> import 路徑逐字保持不變。",
+    a3_call_b:"教學點：",
+    a3_call:"barrel 模組讓你拆檔而不動任何呼叫端。<code>convert.py</code> 與 <code>analytics.py</code> 只依賴 <code>models.py</code>；純函式、無狀態、易於獨立測試。",
+    a4_h:"並行／非同步下載",
+    a4_lede:"三段 opt-in 的並行片段，單一 owner：<code>DownloadService.download_many(max_workers)</code> 在 <code>max_workers ≤ 1</code> 時走序列，否則用有上限的 ThreadPoolExecutor 展開；<code>DownloadAPI</code> 提供 <code>audio_async / video_async / many_async</code> 門面；yt-dlp handler 可用 <code>concurrent_fragments</code> 串流。",
+    a4_call_b:"教學點：",
+    a4_call:"並行很保守：opt-in、預設序列、有 worker 上限，且即使並行仍走 thread-safe 的 <code>rate_limit</code> decorator（由 <code>threading.Lock</code> 守護）。非同步讓<i>多個</i>下載重疊 — 並不會讓單一下載變快。",
+    conv_title:"慣例 — 承重的規則",
+    conv_lede:"來自 CLAUDE.md 的專案規則。其中數條可被驗證：一個 grep 就能證明守門成立。",
+    panel_def_h3:"點一個節點",
+    panel_def_body:"選任一方塊即可看到它的角色、向外連到誰、被誰依賴。",
+    panel_hint:"💡 拖曳任一節點重排 · 線會跟著走。",
+    k_role:"角色", k_wires:"連到", k_usedby:"被誰用", view_anat:"→ 看解剖", k_none:"—"
+  }
+};
+let lang = localStorage.getItem('codebase-map-lang') || 'en';
+const tt = o => (o && typeof o === 'object' && o.en !== undefined) ? o[lang] : o;
+
+/* ============================== data ============================== */
+const LAYERS = [
+  {cls:'ui', name:{en:'Facade',zh:'門面'}, tag:{en:'action API',zh:'動作 API'}, doms:['sub_apis'], target:'sub_apis'},
+  {cls:'state', name:{en:'Contract + Services',zh:'契約＋服務'}, tag:{en:'public API · domain logic',zh:'公開 API · 業務邏輯'}, doms:['api','services'], target:'services'},
+  {cls:'foundation', name:{en:'Handlers + Core + Utils',zh:'後端＋核心＋工具'}, tag:{en:'backends · data · helpers',zh:'後端 · 資料 · 工具'}, doms:['handlers','core','utils'], target:'handlers'}
+];
+
+const ARCH = [
+  {cls:'ui', label:{en:'Facade — action APIs',zh:'門面 — 動作 API'}, chips:['GetAPI','DownloadAPI','SearchAPI','AnalyzeAPI','StreamAPI','+5 helpers'],
+   desc:{en:'<code>sub_apis.py</code> (1575) — 10 user-facing <code>*API</code> classes. 74 one-line delegations to <code>api.py</code>; <b>0 direct handler calls</b> (the gate).',zh:'<code>sub_apis.py</code>（1575）— 10 個使用者面向的 <code>*API</code> 類。74 處一行委派到 <code>api.py</code>；<b>0 次直接呼叫 handler</b>（守門）。'}},
+  {cls:'state', label:{en:'Contract — stable public API',zh:'契約 — 穩定公開 API'}, chips:['YouTubeToolkit','114 public methods','0 except'],
+   desc:{en:'<code>api.py</code> (1966) — <code>YouTubeToolkit</code>: 114 public methods, each a one-line delegate to a service. Owns handlers + anti-detection + 5 sub-APIs. Signatures frozen.',zh:'<code>api.py</code>（1966）— <code>YouTubeToolkit</code>：114 個公開方法，每個一行委派到 service。擁有 handlers + anti-detection + 5 個 sub-API。簽名凍結。'}},
+  {cls:'state', label:{en:'Services — domain logic',zh:'服務 — 業務邏輯'}, chips:['get_info','channel','playlist','download','search','analyze','comments','captions','system'],
+   desc:{en:'<code>services/</code> — 9 <code>*Service</code> classes, each holds a <code>self._toolkit</code> back-ref and the handler-fallback orchestration. <code>download.py</code> is the sole owner of parallel/async.',zh:'<code>services/</code> — 9 個 <code>*Service</code> 類，各持有 <code>self._toolkit</code> back-ref 與 handler-fallback 編排。<code>download.py</code> 是並行／非同步的唯一 owner。'}},
+  {cls:'foundation', label:{en:'Handlers — backends',zh:'後端 — handler'}, chips:['yt_dlp (2306)','youtube_api (2008)','pytubefix (1659)','scrapetube (596)'],
+   desc:{en:'<code>handlers/</code> — each wraps one external package and does the raw work; the services pick & fall back between them.',zh:'<code>handlers/</code> — 每個包一個外部套件做 raw 工作；service 在它們之間挑選與 fallback。'}},
+  {cls:'foundation', label:{en:'Core + Utils — foundation',zh:'核心＋工具 — 基座'}, chips:['fallback','video_info','download','search','comments','captions/*','anti_detection','request_interceptor'],
+   desc:{en:'<code>core/</code> dataclasses + the fallback primitive + the <code>captions/</code> sub-package; <code>utils/</code> anti-detection + thread-safe <code>rate_limit</code>.',zh:'<code>core/</code> dataclass + fallback 原語 + <code>captions/</code> 子套件；<code>utils/</code> anti-detection + thread-safe <code>rate_limit</code>。'}}
+];
+const ARCH_CONN = [
+  {from:'Facade',to:'Contract',t:{en:'74 delegations',zh:'74 委派'}},
+  {from:'Contract',to:'Services',t:{en:'9 imports · one-line',zh:'9 import · 一行'}},
+  {from:'Services',to:'Handlers',t:{en:'112 via toolkit back-ref',zh:'112 經 back-ref'}}
+];
+
+const RULES = [
+  {n:1, t:{en:'Self-describing files',zh:'檔案自我說明'}, d:{en:'The first ~12 lines tell you what a file is for. Every load-bearing file carries a header.',zh:'前約 12 行就說明檔案用途。每個承重檔都有 header。'}},
+  {n:2, t:{en:'Deep modules',zh:'深模組'}, d:{en:'A narrow interface hiding a lot of work. api.py: 114 one-line methods over real service logic.',zh:'窄介面藏大量工作。api.py：114 個一行方法包住真實 service 邏輯。'}},
+  {n:3, t:{en:'Pull complexity down',zh:'把複雜度往下拉'}, d:{en:'Business logic lives in services, not in the facade or the contract. The door stays thin.',zh:'業務邏輯住在 service，不在門面或契約。門保持薄。'}},
+  {n:4, t:{en:"Don't force structure",zh:'別硬造結構'}, d:{en:'Thin domains (utils, dataclass files) stay flat. Only rich subsystems earn an anatomy.',zh:'薄 domain（utils、dataclass 檔）保持扁平。只有豐富子系統才有解剖。'}},
+  {n:5, t:{en:'One owner per decision',zh:'一決策一 owner'}, d:{en:'The fallback decision belongs in core/fallback.py — not re-hand-rolled in 69 places.',zh:'fallback 決策歸於 core/fallback.py — 而非在 69 處重複手刻。'}},
+  {n:6, t:{en:'Behaviour-preserving moves',zh:'保行為搬移'}, d:{en:'Service bodies are verbatim moves of the original api.py code (self.* → self._toolkit.*).',zh:'service 內容是原 api.py 程式碼的逐字搬移（self.* → self._toolkit.*）。'}},
+  {n:7, t:{en:'Stable contract',zh:'穩定契約'}, d:{en:'api.py signatures are frozen — other projects import them. Rewrite bodies, not signatures.',zh:'api.py 簽名凍結 — 其他專案會 import。可改內容，不改簽名。'}},
+  {n:8, t:{en:'Conservative concurrency',zh:'保守並行'}, d:{en:'Parallelism is opt-in, default sequential, bounded, and respects the rate limit.',zh:'並行是 opt-in、預設序列、有上限，並尊重 rate limit。'}}
+];
+
+/* master codebase graph */
+const CB_NODES = [
+  {id:'sub_apis', kind:'view',  x:300,y:18, w:160, link:'delegation-anatomy',
+   role:{en:'Action-API facade',zh:'動作 API 門面'},
+   desc:{en:'10 *API classes; 74 one-line delegations to api.py; never touches a handler directly.',zh:'10 個 *API 類；74 處一行委派到 api.py；從不直接碰 handler。'}},
+  {id:'api', kind:'orchestrator', x:300,y:120, w:160, link:'delegation-anatomy',
+   role:{en:'YouTubeToolkit — public contract',zh:'YouTubeToolkit — 公開契約'},
+   desc:{en:'114 public methods, each a one-line delegate to a service. Owns handlers + anti-detection + 5 sub-APIs.',zh:'114 個公開方法，每個一行委派到 service。擁有 handlers + anti-detection + 5 個 sub-API。'}},
+  {id:'services', kind:'store', x:300,y:222, w:160, link:'parallel-anatomy',
+   role:{en:'9 domain services (business logic)',zh:'9 個 domain service（業務邏輯）'},
+   desc:{en:'get_info/channel/playlist/download/search/analyze/comments/captions/system. Each holds a toolkit back-ref + handler-fallback.',zh:'get_info/channel/playlist/download/search/analyze/comments/captions/system。各持 toolkit back-ref + handler-fallback。'}},
+  {id:'handlers', kind:'hook', x:80,y:300, w:160,
+   role:{en:'4 backend handlers',zh:'4 個後端 handler'},
+   desc:{en:'yt_dlp / youtube_api / pytubefix / scrapetube — each wraps one external package. Reached via toolkit back-ref (112×) plus 3 direct scrapetube imports.',zh:'yt_dlp / youtube_api / pytubefix / scrapetube — 各包一個外部套件。經 back-ref（112 次）加 3 處直接 import scrapetube。'}},
+  {id:'core', kind:'shared', x:300,y:324, w:160, link:'captions-anatomy',
+   role:{en:'Dataclasses + fallback + captions/',zh:'dataclass + fallback + captions/'},
+   desc:{en:'video_info / download / search / comments / post_processors + the fallback primitive + the captions sub-package. Imported by services and handlers.',zh:'video_info / download / search / comments / post_processors + fallback 原語 + captions 子套件。被 services 與 handlers import。'}},
+  {id:'utils', kind:'shared', x:520,y:300, w:160,
+   role:{en:'anti-detection + rate limit',zh:'anti-detection + rate limit'},
+   desc:{en:'AntiDetectionManager, the thread-safe rate_limit decorator, helpers. Imported by handlers; api.py imports anti_detection.',zh:'AntiDetectionManager、thread-safe rate_limit decorator、helpers。被 handlers import；api.py import anti_detection。'}}
+];
+const CB_EDGES = [
+  ['sub_apis','api'], ['api','services'], ['services','handlers'],
+  ['services','core'], ['handlers','core'], ['handlers','utils'], ['api','utils']
+];
+
+const ANATOMIES_INDEX = [
+  {anchor:'delegation-anatomy', layer:'state', name:'4-layer delegation', blurb:{en:'facade → contract → service → handler; the narrow door.',zh:'門面 → 契約 → service → handler；窄門。'}},
+  {anchor:'fallback-anatomy', layer:'foundation', name:'fallback primitive', blurb:{en:'one tested seam for the try-handlers-in-order decision (adopted for canonical sites).',zh:'依序試 handler 決策的單一可測接縫（canonical 已採用）。'}},
+  {anchor:'captions-anatomy', layer:'foundation', name:'captions/ sub-package', blurb:{en:'models · convert · analytics behind a path-preserving barrel.',zh:'models · convert · analytics，藏在保留路徑的 barrel 後。'}},
+  {anchor:'parallel-anatomy', layer:'state', name:'parallel / async download', blurb:{en:'opt-in ThreadPool + *_async facades + concurrent_fragments.',zh:'opt-in ThreadPool + *_async 門面 + concurrent_fragments。'}}
+];
+
+/* anatomy graphs */
+const DEL_NODES = [
+  {id:'sub_apis.py', kind:'view', x:40,y:18, w:170, role:{en:'action facade',zh:'動作門面'}, desc:{en:'GetAPI/DownloadAPI/… — user-friendly verbs. Calls api.py only.',zh:'GetAPI/DownloadAPI/… — 友善動詞。只呼叫 api.py。'}},
+  {id:'api.py', kind:'orchestrator', x:295,y:18, w:170, role:{en:'public contract',zh:'公開契約'}, desc:{en:'YouTubeToolkit: 114 one-line methods. Frozen signatures; owns handlers.',zh:'YouTubeToolkit：114 個一行方法。簽名凍結；擁有 handlers。'}},
+  {id:'*Service', kind:'store', x:550,y:18, w:170, role:{en:'domain logic',zh:'domain 邏輯'}, desc:{en:'9 services hold the real logic + handler-fallback. self._toolkit back-ref.',zh:'9 個 service 持有真實邏輯 + handler-fallback。self._toolkit back-ref。'}},
+  {id:'*Handler', kind:'hook', x:550,y:170, w:170, role:{en:'backend',zh:'後端'}, desc:{en:'yt_dlp / pytubefix / youtube_api / scrapetube — raw work. Reached via toolkit.',zh:'yt_dlp / pytubefix / youtube_api / scrapetube — raw 工作。經 toolkit 觸及。'}}
+];
+const DEL_EDGES = [['sub_apis.py','api.py'],['api.py','*Service'],['*Service','*Handler']];
+
+const FB_NODES = [
+  {id:'run_with_fallback', kind:'orchestrator', x:280,y:18, w:200, role:{en:'the primitive',zh:'原語'}, desc:{en:'Tries each (label, callable) in order; returns first success; raises RuntimeError if all fail.',zh:'依序試每個 (label, callable)；回傳首個成功；全失敗則丟 RuntimeError。'}},
+  {id:'log_failure', kind:'shared', x:60,y:170, w:170, role:{en:'logging seam',zh:'logging 接縫'}, desc:{en:'Unified replacement for bare print("X failed"). WARNING when verbose, else DEBUG.',zh:'統一取代裸 print("X failed")。verbose 時 WARNING，否則 DEBUG。'}},
+  {id:'services (callers)', kind:'store', x:520,y:170, w:200, role:{en:'service callers',zh:'service 呼叫端'}, desc:{en:'Adopted: get_info.get_video_info + captions.download_captions call run_with_fallback. Result-guard/default-return variants intentionally left hand-rolled.',zh:'已採用：get_info.get_video_info 與 captions.download_captions 呼叫 run_with_fallback。結果守衛/回傳預設的變體刻意保留手刻。'}}
+];
+const FB_EDGES = [['run_with_fallback','log_failure'],['services (callers)','run_with_fallback']];
+
+const CAP_NODES = [
+  {id:'__init__.py (barrel)', kind:'orchestrator', x:280,y:18, w:200, role:{en:'path-preserving barrel',zh:'保留路徑的 barrel'}, desc:{en:'Re-exports models + convert + analytics so core.captions import path stays identical.',zh:'重新匯出 models + convert + analytics，使 core.captions import 路徑不變。'}},
+  {id:'models.py', kind:'shared', x:40,y:180, w:170, role:{en:'enums + dataclasses (407)',zh:'enum + dataclass（407）'}, desc:{en:'Pure data types: track/cue/content/filters/result/quality. No logic.',zh:'純資料型別：track/cue/content/filters/result/quality。無邏輯。'}},
+  {id:'convert.py', kind:'view', x:295,y:180, w:170, role:{en:'format conversion (248)',zh:'格式轉換（248）'}, desc:{en:'SRT ↔ VTT/TXT/SBV/TTML + parse_srt + validate. Depends only on models.',zh:'SRT ↔ VTT/TXT/SBV/TTML + parse_srt + validate。只依賴 models。'}},
+  {id:'analytics.py', kind:'hook', x:550,y:180, w:170, role:{en:'analysis + scoring (236)',zh:'分析 + 評分（236）'}, desc:{en:'Language detection, reading-speed, quality metrics. Stateless; reads only models.',zh:'語言偵測、閱讀速度、品質指標。無狀態；只讀 models。'}}
+];
+const CAP_EDGES = [['__init__.py (barrel)','models.py'],['__init__.py (barrel)','convert.py'],['__init__.py (barrel)','analytics.py'],['convert.py','models.py'],['analytics.py','models.py']];
+
+const PAR_NODES = [
+  {id:'DownloadAPI', kind:'view', x:40,y:18, w:180, role:{en:'async facades',zh:'非同步門面'}, desc:{en:'audio_async / video_async / many_async — opt-in async wrappers in sub_apis.py.',zh:'audio_async / video_async / many_async — sub_apis.py 內 opt-in 非同步包裝。'}},
+  {id:'download_many', kind:'orchestrator', x:300,y:18, w:180, role:{en:'parallel owner',zh:'並行 owner'}, desc:{en:'max_workers ≤ 1 → sequential loop; > 1 → bounded ThreadPoolExecutor. Single owner of concurrency.',zh:'max_workers ≤ 1 → 序列；> 1 → 有上限 ThreadPoolExecutor。並行的唯一 owner。'}},
+  {id:'rate_limit', kind:'shared', x:560,y:18, w:170, role:{en:'thread-safe gate',zh:'thread-safe 守門'}, desc:{en:'utils/request_interceptor decorator guarded by a threading.Lock — safe under fan-out.',zh:'utils/request_interceptor decorator 由 threading.Lock 守護 — 展開下安全。'}},
+  {id:'concurrent_fragments', kind:'hook', x:300,y:170, w:180, role:{en:'yt-dlp streaming',zh:'yt-dlp 串流'}, desc:{en:'yt_dlp_handler option (19 refs) for parallel fragment download of a single file.',zh:'yt_dlp_handler 選項（19 處）用於單一檔案的並行片段下載。'}}
+];
+const PAR_EDGES = [['DownloadAPI','download_many'],['download_many','concurrent_fragments'],['download_many','rate_limit']];
+
+const CONV = [
+  {l:{en:'Sub-API → api.py only',zh:'Sub-API 只呼叫 api.py'}, d:{en:'sub_apis never calls a handler directly. Enforceable gate: grep handler-direct in sub_apis.py = 0.',zh:'sub_apis 從不直接呼叫 handler。可驗證守門：grep sub_apis.py 的 handler-direct = 0。'}},
+  {l:{en:'api.py → services only',zh:'api.py 只委派到 service'}, d:{en:'api.py delegates to services, never to handlers — the sole exception is extract_video_id.',zh:'api.py 只委派到 service，不直打 handler — 唯一例外是 extract_video_id。'}},
+  {l:{en:'Naming suffixes',zh:'命名後綴'}, d:{en:'services/ use *Service · sub_apis use *API · handlers use *Handler.',zh:'services/ 用 *Service · sub_apis 用 *API · handlers 用 *Handler。'}},
+  {l:{en:'Conservative concurrency',zh:'保守並行'}, d:{en:'Opt-in, bounded by max_workers, respects rate_limit; default is sequential.',zh:'opt-in、由 max_workers 設上限、尊重 rate_limit；預設序列。'}}
+];
+
+/* module map domains */
+const DOMAINS = [
+  {name:'facade', path:'youtube_toolkit/sub_apis.py', layer:'ui',
+   blurb:{en:'The action-based sub-API facades users hold.',zh:'使用者持有的動作型 sub-API 門面。'},
+   files:[['sub_apis.py',1575,{en:'10 *API classes (Get/Download/Search/Analyze/Stream + channel/playlist/comments/trending/livestream helpers). 74 delegations to api.py; 0 handler-direct.',zh:'10 個 *API 類（Get/Download/Search/Analyze/Stream + channel/playlist/comments/trending/livestream helper）。74 委派 api.py；0 handler-direct。'},true]]},
+  {name:'contract', path:'youtube_toolkit/api.py', layer:'state',
+   blurb:{en:'The stable public API — YouTubeToolkit.',zh:'穩定公開 API — YouTubeToolkit。'},
+   files:[['api.py',1966,{en:'YouTubeToolkit: 114 public methods, each a one-line delegate to a service. Owns handlers + anti-detection + 5 sub-APIs. 0 except clauses; only handler-direct call is extract_video_id.',zh:'YouTubeToolkit：114 個公開方法，每個一行委派到 service。擁有 handlers + anti-detection + 5 sub-API。0 except；唯一 handler-direct 是 extract_video_id。'},true]]},
+  {name:'services', path:'youtube_toolkit/services/', layer:'state',
+   blurb:{en:'Domain business logic, descended out of api.py. Each holds a self._toolkit back-ref.',zh:'從 api.py 下沉的 domain 業務邏輯。各持 self._toolkit back-ref。'},
+   files:[
+     ['playlist.py',411,{en:'Playlist URL listing, info, filtering, bulk media download.',zh:'播放清單 URL 列舉、資訊、過濾、批次媒體下載。'},false],
+     ['download.py',357,{en:'Audio/video/short/live downloads (with fallback), batch, export, sponsorblock/archive. Sole owner of parallel download_many + async.',zh:'音訊/影片/short/live 下載（含 fallback）、批次、匯出、sponsorblock/archive。並行 download_many + async 唯一 owner。'},true],
+     ['search.py',334,{en:'Video search (basic/advanced/boolean/paginated/filtered), category/trending, scrapetube search.',zh:'影片搜尋（基本/進階/布林/分頁/過濾）、分類/趨勢、scrapetube 搜尋。'},false],
+     ['captions.py',280,{en:'Caption listing, download (fallback + format conversion), search, analytics, export.',zh:'字幕列舉、下載（fallback + 格式轉換）、搜尋、分析、匯出。'},false],
+     ['comments.py',229,{en:'Comment retrieval, filtering, pagination, export + CommentResult builder.',zh:'留言取得、過濾、分頁、匯出 + CommentResult builder。'},false],
+     ['system.py',167,{en:'Handler self-tests + static capability lists (languages / regions).',zh:'handler 自測 + 靜態能力清單（語言／地區）。'},false],
+     ['get_info.py',121,{en:'Video info / formats / metadata / chapters / shorts / thumbnail / cookie-info.',zh:'影片資訊／格式／metadata／章節／shorts／縮圖／cookie-info。'},false],
+     ['channel.py',108,{en:'Channel listing / metadata / subscriptions / activity (imports scrapetube_handler directly).',zh:'頻道列舉／metadata／訂閱／活動（直接 import scrapetube_handler）。'},false],
+     ['analyze.py',45,{en:'Engagement / live / sponsorblock analysis.',zh:'互動／直播／sponsorblock 分析。'},false]
+   ]},
+  {name:'handlers', path:'youtube_toolkit/handlers/', layer:'foundation',
+   blurb:{en:'Backend implementations — each wraps one external package.',zh:'後端實作 — 每個包一個外部套件。'},
+   files:[
+     ['yt_dlp_handler.py',2306,{en:'yt-dlp backend: info extraction + downloading (incl. concurrent_fragments). The fallback workhorse.',zh:'yt-dlp 後端：資訊抽取 + 下載（含 concurrent_fragments）。fallback 主力。'},true],
+     ['youtube_api_handler.py',2008,{en:'Official YouTube Data API v3 — rich metadata, search, comments, captions.',zh:'官方 YouTube Data API v3 — 豐富 metadata、搜尋、留言、字幕。'},false],
+     ['pytubefix_handler.py',1659,{en:'pytubefix backend: primary info extraction + media download with advanced processing.',zh:'pytubefix 後端：主要資訊抽取 + 進階處理的媒體下載。'},false],
+     ['scrapetube_handler.py',596,{en:'scrapetube: unlimited channel scraping + search (no API quota / pagination limit).',zh:'scrapetube：無限頻道抓取 + 搜尋（無 API 配額／分頁上限）。'},false]
+   ]},
+  {name:'core', path:'youtube_toolkit/core/', layer:'foundation',
+   blurb:{en:'Data classes, the fallback primitive, post-processors, and the captions sub-package.',zh:'dataclass、fallback 原語、post-processor，與 captions 子套件。'},
+   files:[
+     ['search.py',627,{en:'SearchResult / SearchFilters / Thumbnails + YOUTUBE_CATEGORIES + boolean query model.',zh:'SearchResult / SearchFilters / Thumbnails + YOUTUBE_CATEGORIES + 布林查詢模型。'},false],
+     ['captions/models.py',407,{en:'Caption enums + dataclasses (track/cue/content/filters/result/quality). Pure data.',zh:'字幕 enum + dataclass（track/cue/content/filters/result/quality）。純資料。'},false],
+     ['comments.py',344,{en:'Comment / CommentAuthor / CommentMetrics / CommentResult / CommentFilters models.',zh:'Comment / CommentAuthor / CommentMetrics / CommentResult / CommentFilters 模型。'},false],
+     ['post_processors.py',280,{en:'Convert raw handler output → standardized VideoInfo / DownloadResult.',zh:'把 raw handler 輸出 → 標準化 VideoInfo / DownloadResult。'},false],
+     ['captions/convert.py',248,{en:'SRT ↔ VTT/TXT/SBV/TTML conversion + parse_srt + validate_format. Depends only on models.',zh:'SRT ↔ VTT/TXT/SBV/TTML 轉換 + parse_srt + validate_format。只依賴 models。'},false],
+     ['captions/analytics.py',236,{en:'Language detection, reading-speed, quality scoring. Stateless.',zh:'語言偵測、閱讀速度、品質評分。無狀態。'},false],
+     ['video_info.py',95,{en:'Core VideoInfo dataclass for standardized video metadata.',zh:'核心 VideoInfo dataclass，標準化影片 metadata。'},false],
+     ['download.py',95,{en:'Core DownloadResult dataclass for standardized download results.',zh:'核心 DownloadResult dataclass，標準化下載結果。'},false],
+     ['fallback.py',90,{en:'run_with_fallback + log_failure — the intended single owner of the fallback decision (scaffolded; not yet imported).',zh:'run_with_fallback + log_failure — fallback 決策意圖中的單一 owner（已搭骨架；尚未被 import）。'},true],
+     ['captions/__init__.py',52,{en:'Barrel re-exporting models + convert + analytics; keeps core.captions import path identical.',zh:'barrel 重新匯出 models + convert + analytics；保持 core.captions import 路徑不變。'},false]
+   ]},
+  {name:'utils', path:'youtube_toolkit/utils/', layer:'foundation',
+   blurb:{en:'Cross-cutting helpers: anti-detection + rate limiting.',zh:'橫切工具：anti-detection + rate limit。'},
+   files:[
+     ['anti_detection.py',219,{en:'AntiDetectionManager — session rotation, headers, backoff for scraping resilience.',zh:'AntiDetectionManager — session 輪換、headers、退避，提升抓取韌性。'},false],
+     ['request_interceptor.py',76,{en:'rate_limit decorator (thread-safe via threading.Lock) + anti_detection_interceptor.',zh:'rate_limit decorator（經 threading.Lock 為 thread-safe）+ anti_detection_interceptor。'},true],
+     ['helpers.py',5,{en:'ensure_directory — tiny filesystem helper.',zh:'ensure_directory — 微型檔案系統工具。'},false]
+   ]}
+];
+
+/* ============================== render ============================== */
+const NS='http://www.w3.org/2000/svg';
+const KIND_COLOR={orchestrator:'#2a211c',store:'#7a9e6e',hook:'#6c8fb5',view:'#b5894e',shared:'#cfc6b5'};
+const KIND_LABEL={orchestrator:{en:'orchestrator',zh:'orchestrator'},store:{en:'service / state',zh:'service / 狀態'},hook:{en:'backend / behavior',zh:'後端 / 行為'},view:{en:'facade / view',zh:'門面 / view'},shared:{en:'shared / data',zh:'共用 / 資料'}};
+
+function panelDefault(panelSel, legendKinds){
+  const legend = legendKinds.map(k=>`<div class="li"><span class="sw" style="background:${KIND_COLOR[k]}"></span>${tt(KIND_LABEL[k])}</div>`).join('');
+  document.querySelector(panelSel).innerHTML =
+    `<h3>${T[lang].panel_def_h3}</h3><p class="muted">${T[lang].panel_def_body}</p>`+
+    `<div class="legend">${legend}</div><p class="hint">${T[lang].panel_hint}</p>`;
+}
+
+function renderGraph(svgSel, panelSel, nodes, edges){
+  const g=document.querySelector(svgSel); g.innerHTML='';
+  const visible=nodes.filter(n=>!n.hidden);
+  const byId=Object.fromEntries(visible.map(n=>[n.id,n]));
+  const edgesByNode=new Map();
+  edges.forEach(([a,b])=>{
+    const A=byId[a],B=byId[b]; if(!A||!B)return;
+    const line=document.createElementNS(NS,'line');
+    const set=()=>{line.setAttribute('x1',A.x+A.w/2);line.setAttribute('y1',A.y+44);line.setAttribute('x2',B.x+B.w/2);line.setAttribute('y2',B.y);};
+    set();
+    line.setAttribute('stroke','#d8cfbe');line.setAttribute('stroke-width','1.6');
+    g.appendChild(line);
+    [a,b].forEach(id=>{if(!edgesByNode.has(id))edgesByNode.set(id,[]);edgesByNode.get(id).push({line,A,B,set});});
+  });
+  const legendKinds=[...new Set(visible.map(n=>n.kind))];
+  visible.forEach(n=>{
+    const grp=document.createElementNS(NS,'g'); grp.setAttribute('class','node');
+    const rect=document.createElementNS(NS,'rect');
+    rect.setAttribute('x',n.x);rect.setAttribute('y',n.y);rect.setAttribute('width',n.w);rect.setAttribute('height',52);
+    rect.setAttribute('rx',11);rect.setAttribute('fill','#fffdf8');rect.setAttribute('stroke',KIND_COLOR[n.kind]);rect.setAttribute('stroke-width','1.8');
+    grp.appendChild(rect);
+    const dot=document.createElementNS(NS,'circle');
+    dot.setAttribute('cx',n.x+n.w-13);dot.setAttribute('cy',n.y+14);dot.setAttribute('r',5);dot.setAttribute('fill',KIND_COLOR[n.kind]);
+    grp.appendChild(dot);
+    const t1=document.createElementNS(NS,'text');
+    t1.setAttribute('x',n.x+13);t1.setAttribute('y',n.y+22);t1.setAttribute('font-family',"'SF Mono',ui-monospace,monospace");t1.setAttribute('font-size','12.5');t1.setAttribute('font-weight','700');t1.setAttribute('fill','#2a211c');
+    t1.textContent=n.id;
+    grp.appendChild(t1);
+    const t2=document.createElementNS(NS,'text');
+    t2.setAttribute('x',n.x+13);t2.setAttribute('y',n.y+39);t2.setAttribute('font-size','10.5');t2.setAttribute('fill','#8a7d6e');
+    t2.textContent=tt(n.role);
+    grp.appendChild(t2);
+    g.appendChild(grp);
+
+    // drag + click
+    let down=false,moved=false,sx=0,sy=0,ox=0,oy=0;
+    const scale=()=>{const vb=g.viewBox.baseVal; return vb.width/g.getBoundingClientRect().width;};
+    grp.addEventListener('pointerdown',e=>{down=true;moved=false;sx=e.clientX;sy=e.clientY;ox=n.x;oy=n.y;grp.classList.add('dragging');grp.setPointerCapture(e.pointerId);});
+    grp.addEventListener('pointermove',e=>{
+      if(!down)return; const s=scale();
+      const dx=(e.clientX-sx)*s,dy=(e.clientY-sy)*s;
+      if(Math.abs(dx)>2||Math.abs(dy)>2)moved=true;
+      n.x=ox+dx;n.y=oy+dy;
+      rect.setAttribute('x',n.x);rect.setAttribute('y',n.y);
+      dot.setAttribute('cx',n.x+n.w-13);dot.setAttribute('cy',n.y+14);
+      t1.setAttribute('x',n.x+13);t1.setAttribute('y',n.y+22);
+      t2.setAttribute('x',n.x+13);t2.setAttribute('y',n.y+39);
+      (edgesByNode.get(n.id)||[]).forEach(o=>o.set());
+    });
+    grp.addEventListener('pointerup',e=>{down=false;grp.classList.remove('dragging');if(!moved)showPanel(panelSel,n,edges,nodes,legendKinds);});
+  });
+  panelDefault(panelSel,legendKinds);
+}
+
+function showPanel(panelSel,n,edges,nodes,legendKinds){
+  const wires=edges.filter(e=>e[0]===n.id).map(e=>e[1]);
+  const used=edges.filter(e=>e[1]===n.id).map(e=>e[0]);
+  const none=T[lang].k_none;
+  let html=`<h3>${n.id}</h3>`+
+    `<div class="k">${T[lang].k_role}</div><p>${tt(n.desc)}</p>`+
+    `<div class="k">${T[lang].k_wires}</div><p class="muted">${wires.length?wires.join(', '):none}</p>`+
+    `<div class="k">${T[lang].k_usedby}</div><p class="muted">${used.length?used.join(', '):none}</p>`;
+  if(n.link)html+=`<a class="hop" href="#${n.link}">${T[lang].view_anat}</a>`;
+  document.querySelector(panelSel).innerHTML=html;
+}
+
+function renderLayers(){
+  document.getElementById('layers').innerHTML=LAYERS.map(l=>
+    `<div class="lcard ${l.cls}" data-target="${l.target}">
+      <span class="lname">${tt(l.name)}</span><span class="ltag">${tt(l.tag)}</span>
+      <div class="lchips">${l.doms.map(d=>`<span class="chip">${d}</span>`).join('')}</div>
+    </div>`).join('');
+  document.querySelectorAll('.lcard').forEach(c=>c.addEventListener('click',()=>{
+    document.getElementById('map').scrollIntoView({behavior:'smooth'});
+    const t=c.dataset.target;
+    document.querySelectorAll('details.dom').forEach(d=>{if(d.dataset.name===t)d.open=true;});
+  }));
+}
+function renderArch(){
+  let h='';
+  ARCH.forEach((a,i)=>{
+    h+=`<div class="archlayer ${a.cls}"><div class="alabel">${tt(a.label)}</div>`+
+       `<div class="achips">${a.chips.map(c=>`<span class="chip">${c}</span>`).join('')}</div>`+
+       `<div class="adesc">${tt(a.desc)}</div></div>`;
+    const conn=ARCH_CONN[i];
+    if(conn)h+=`<div class="archconn"><span class="arrow">↓</span><span>${conn.from} → ${conn.to}: ${tt(conn.t)}</span></div>`;
+  });
+  document.getElementById('archdiag').innerHTML=h;
+}
+function renderRules(){
+  document.getElementById('rulesGrid').innerHTML=RULES.map(r=>
+    `<div class="rule"><div class="n">${r.n}</div><div><div class="rt">${tt(r.t)}</div><div class="rd">${tt(r.d)}</div></div></div>`).join('');
+}
+function renderAnatIndex(){
+  document.getElementById('anatGrid').innerHTML=ANATOMIES_INDEX.map(a=>
+    `<a class="anat-card ${a.layer}" href="#${a.anchor}">
+      <span class="layer-chip ${a.layer}">${a.layer}</span>
+      <div class="acname">${a.name}</div>
+      <div class="acblurb">${tt(a.blurb)}</div>
+      <span class="acjump">${T[lang].view_anat}</span>
+    </a>`).join('');
+}
+function renderConv(){
+  document.getElementById('convList').innerHTML=CONV.map(c=>
+    `<div class="rule"><div class="n">§</div><div><div class="rt">${tt(c.l)}</div><div class="rd">${tt(c.d)}</div></div></div>`).join('');
+  document.getElementById('convList').style.display='grid';
+  document.getElementById('convList').style.gridTemplateColumns='1fr';
+  document.getElementById('convList').style.gap='10px';
+}
+const LAYER_DOT={ui:'var(--ui)',state:'var(--state)',foundation:'var(--foundation)'};
+function renderDomains(){
+  const wrap=document.getElementById('domains');
+  wrap.innerHTML=DOMAINS.map(d=>{
+    const files=d.files.map(([fn,loc,role,star])=>
+      `<div class="file" data-text="${(fn+' '+tt(role)).toLowerCase()}">
+        <span class="fn">${star?'<span class="star">★</span> ':''}${fn}</span>
+        <span class="loc">${loc}</span>
+        <span class="fr">${tt(role)}</span>
+      </div>`).join('');
+    return `<details class="dom" data-name="${d.name}">
+      <summary><span class="caret">▶</span><span>${d.name}</span>
+        <span class="dpath">${d.path}</span>
+        <span class="ddot" style="background:${LAYER_DOT[d.layer]}"></span></summary>
+      <div class="dombody"><div class="domblurb">${tt(d.blurb)}</div>${files}</div>
+    </details>`;
+  }).join('');
+  updateCount();
+}
+function updateCount(){
+  const total=DOMAINS.reduce((a,d)=>a+d.files.length,0);
+  const vis=document.querySelectorAll('.file:not([style*="display: none"])').length;
+  const c=document.getElementById('count');
+  const q=document.getElementById('q').value.trim();
+  c.textContent=q?`${vis} / ${total}`:`${total} ${lang==='zh'?'個檔案':'files'} · ${DOMAINS.length} ${lang==='zh'?'個 domain':'domains'}`;
+}
+function filterFiles(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  document.querySelectorAll('details.dom').forEach(dom=>{
+    let any=false;
+    dom.querySelectorAll('.file').forEach(f=>{
+      const hit=!q||f.dataset.text.includes(q);
+      f.style.display=hit?'':'none'; if(hit)any=true;
+    });
+    dom.style.display=any?'':'none';
+    if(q&&any)dom.open=true; if(!q)dom.open=false;
+  });
+  updateCount();
+}
+
+function renderGraphs(){
+  renderGraph('#cbGraph','#cbPanel',CB_NODES,CB_EDGES);
+  renderGraph('#delGraph','#delPanel',DEL_NODES,DEL_EDGES);
+  renderGraph('#fbGraph','#fbPanel',FB_NODES,FB_EDGES);
+  renderGraph('#capGraph','#capPanel',CAP_NODES,CAP_EDGES);
+  renderGraph('#parGraph','#parPanel',PAR_NODES,PAR_EDGES);
+}
+function render(){
+  renderLayers(); renderArch(); renderRules(); renderAnatIndex(); renderConv(); renderDomains(); renderGraphs();
+  filterFiles();
+}
+
+function setLang(L){
+  lang=L; localStorage.setItem('codebase-map-lang',L);
+  document.documentElement.lang=(L==='zh'?'zh-Hant':'en');
+  document.querySelectorAll('.lang-btn').forEach(b=>b.classList.toggle('active',b.dataset.lang===L));
+  document.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t;if(T[lang][k]!==undefined)el.innerHTML=T[lang][k];});
+  document.querySelectorAll('[data-t-placeholder]').forEach(el=>{const k=el.dataset.tPlaceholder;if(T[lang][k]!==undefined)el.placeholder=T[lang][k];});
+  render();
+}
+
+/* scrollspy */
+function initScrollspy(){
+  const links=[...document.querySelectorAll('nav.side a.nl')];
+  const map={};
+  links.forEach(a=>{const id=a.getAttribute('href').slice(1);map[id]=a;});
+  const obs=new IntersectionObserver(es=>{
+    es.forEach(e=>{if(e.isIntersecting){links.forEach(l=>l.classList.remove('active'));if(map[e.target.id])map[e.target.id].classList.add('active');}});
+  },{rootMargin:'-20% 0px -70% 0px'});
+  document.querySelectorAll('main section').forEach(s=>obs.observe(s));
+}
+
+/* init */
+document.querySelectorAll('.lang-btn').forEach(b=>b.addEventListener('click',()=>setLang(b.dataset.lang)));
+document.getElementById('q').addEventListener('input',filterFiles);
+setLang(lang);
+initScrollspy();
+</script>
+</body>
+</html>

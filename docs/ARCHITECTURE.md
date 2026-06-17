@@ -5,7 +5,7 @@ This document explains the design decisions and philosophy behind youtube-toolki
 ## Table of Contents
 
 - [Design Philosophy](#design-philosophy)
-- [Three-Layer Architecture](#three-layer-architecture)
+- [Four-Layer Architecture](#four-layer-architecture)
 - [The 5 Core APIs](#the-5-core-apis)
 - [Handler System](#handler-system)
 - [Fallback Strategy](#fallback-strategy)
@@ -77,7 +77,7 @@ toolkit.download.audio(url)
 toolkit.get.video(url)
 ```
 
-## Three-Layer Architecture
+## Four-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -86,20 +86,30 @@ toolkit.get.video(url)
 │                                                             │
 │   GetAPI    DownloadAPI    SearchAPI    AnalyzeAPI   StreamAPI│
 │                                                             │
-│   - User-friendly methods                                   │
-│   - Callable classes with smart defaults                    │
+│   - User-friendly methods, callable classes, smart defaults │
 │   - Delegates to API layer (never directly to handlers)     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     API LAYER                               │
+│                     API LAYER (the public contract)         │
 │              (api.py - YouTubeToolkit)                      │
 │                                                             │
-│   - Unified interface                                       │
-│   - Fallback logic between handlers                         │
-│   - Cross-cutting concerns (logging, caching, rate limits)  │
-│   - Legacy method support                                   │
+│   - Thin delegation layer: each method is one line to a     │
+│     service. Method signatures are FROZEN (external import).│
+│   - Owns handlers + anti-detection + the 5 sub-APIs         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   SERVICE LAYER                             │
+│              (services/*.py - Business logic)              │
+│                                                             │
+│   GetInfo  Channel  Playlist  Download  Search  Analyze     │
+│   Comments  Captions  System  (each takes a toolkit back-ref)│
+│                                                             │
+│   - Handler-fallback orchestration (core/fallback.py)       │
+│   - Parallel/async download owner (services/download.py)    │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -108,10 +118,8 @@ toolkit.get.video(url)
 │              (handlers/*.py - Backends)                     │
 │                                                             │
 │   PyTubeFixHandler    YTDLPHandler    YouTubeAPIHandler     │
-│                                                             │
-│   - Raw implementation using external packages              │
-│   - No cross-handler logic                                  │
-│   - Simple, focused methods                                 │
+│   - Raw implementation using external packages, no          │
+│     cross-handler logic, simple focused methods             │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -121,12 +129,14 @@ toolkit.get.video(url)
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Why Three Layers?
+### Why These Layers?
 
-1. **Separation of Concerns**: Each layer has a single responsibility
+1. **Separation of Concerns**: Each layer has a single responsibility — api.py is
+   the stable public contract, services hold the logic, handlers wrap backends
 2. **Testability**: Layers can be tested independently
 3. **Flexibility**: Swap handlers without changing user-facing APIs
-4. **Maintainability**: Changes in one layer don't ripple through others
+4. **Maintainability**: api.py stays small (a delegation index); a domain's logic
+   lives in one service file you can read top-to-bottom
 
 ## The 5 Core APIs
 
@@ -193,23 +203,25 @@ toolkit.download.video(url)     # Explicit
 
 ### Automatic Fallback
 
+Fallback lives in the **service layer**, built on the single primitive
+`core/fallback.run_with_fallback` (one owner for the "try handlers in order,
+log, raise when all fail" decision). api.py just delegates.
+
 ```python
-# In api.py
+# api.py — thin delegation (the public contract)
 def get_video_info(self, url: str) -> Dict:
     """Get video info with automatic fallback."""
-    # Try primary handler
-    try:
-        return self.pytubefix.get_video_info(url)
-    except Exception:
-        pass
-    
-    # Fallback to secondary
-    try:
-        return self.yt_dlp.get_video_info(url)
-    except Exception:
-        pass
-    
-    raise RuntimeError("All handlers failed")
+    return self._get_info.get_video_info(url)
+
+# services/get_info.py — where the fallback decision actually lives
+def get_video_info(self, url: str) -> Dict:
+    from ..core.fallback import run_with_fallback
+    return run_with_fallback(
+        [("PyTubeFix", lambda: self._toolkit.pytubefix.get_video_info(url)),
+         ("YT-DLP",    lambda: self._toolkit.yt_dlp.get_video_info(url))],
+        error_message="All video info extraction methods failed",
+        verbose=self._toolkit.verbose,
+    )
 ```
 
 ### Why This Order?
@@ -308,7 +320,7 @@ No type safety, no IDE support, easy to make typos.
 
 Tightly coupled code makes adding features difficult.
 
-**Solution**: Three-layer architecture with clear boundaries.
+**Solution**: Layered architecture (sub-API -> api -> services -> handlers) with clear boundaries.
 
 ---
 
@@ -319,7 +331,7 @@ youtube-toolkit is designed around these principles:
 1. **Reliability**: Multiple backends with automatic fallback
 2. **Simplicity**: 5 intuitive APIs based on user intent
 3. **Type Safety**: Data classes instead of raw dictionaries
-4. **Extensibility**: Three-layer architecture
+4. **Extensibility**: Layered architecture (services + handlers)
 5. **Compatibility**: Legacy methods still work
 
 The goal is a library that "just works" while remaining maintainable and extensible.

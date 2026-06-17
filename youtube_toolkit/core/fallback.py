@@ -3,10 +3,9 @@ core/fallback.py — the single owner of the codebase's one fallback decision.
 
 Captures the pattern hand-written ~69 times in api.py: try handlers in order,
 log and move on when one raises, and raise RuntimeError once every attempt has
-failed. Also provides a logging seam (`log_failure` / module logger) so the bare
-`print()` calls scattered across api.py can route through standard `logging`,
-gated by a `verbose` flag. This phase only adds the tool; call sites are rewired
-in a later phase.
+failed. `run_with_fallback` is the primitive; `log_failure` + the module logger
+are the logging seam that replaces bare `print()`, gated by a `verbose` flag.
+Lives in core/ so any service can reach it without an upward dependency.
 
 Reads: nothing (pure stdlib logging + callables passed in by callers).
 """
