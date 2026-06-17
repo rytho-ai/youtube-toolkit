@@ -1,13 +1,33 @@
 """
-services/ — home for business logic descending out of the api.py god class.
+services/ — domain service layer (business logic descended out of api.py).
 
-This package is the new home for the orchestration/business logic currently
-living inside YouTubeToolkit (api.py). Each future module groups methods by
-domain (get_info, channel, download, search, ...) so api.py can shrink to a
-thin delegation layer while handlers stay pluggable backends. Empty for now —
-this is the skeleton; services are filled in by the next refactor phase.
+Each module groups YouTubeToolkit's methods by domain (get_info, channel,
+playlist, download, search, analyze, comments, captions, system) so api.py is a
+thin delegation layer. Every service takes a back-ref to the toolkit and reads
+handlers through it (toolkit.pytubefix / .yt_dlp / .youtube_api), keeping
+fallback orchestration and cross-domain calls routed through api.py.
 
-Reads: nothing yet (barrel only). Future services will read youtube_toolkit.handlers.* and youtube_toolkit.core.fallback.
+Reads: youtube_toolkit.handlers.* (via toolkit back-ref), youtube_toolkit.core.*.
 """
 
-__all__: list = []
+from .get_info import GetInfoService
+from .channel import ChannelService
+from .playlist import PlaylistService
+from .download import DownloadService
+from .search import SearchService
+from .analyze import AnalyzeService
+from .comments import CommentsService
+from .captions import CaptionsService
+from .system import SystemService
+
+__all__ = [
+    "GetInfoService",
+    "ChannelService",
+    "PlaylistService",
+    "DownloadService",
+    "SearchService",
+    "AnalyzeService",
+    "CommentsService",
+    "CaptionsService",
+    "SystemService",
+]

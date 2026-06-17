@@ -15,6 +15,15 @@ from .core.download import DownloadResult
 from .core.search import SearchResult, SearchFilters, SearchResultItem
 from .core.comments import CommentResult, CommentFilters, Comment, CommentAuthor, CommentMetrics, CommentOrder
 from .core.captions import CaptionResult, CaptionFilters, CaptionTrack
+from .services.analyze import AnalyzeService
+from .services.system import SystemService
+from .services.channel import ChannelService
+from .services.get_info import GetInfoService
+from .services.playlist import PlaylistService
+from .services.comments import CommentsService
+from .services.captions import CaptionsService
+from .services.search import SearchService
+from .services.download import DownloadService
 import os
 import time
 import warnings
@@ -85,6 +94,18 @@ class YouTubeToolkit:
         # YouTube API doesn't need anti-detection (it's official)
         self.youtube_api = YouTubeAPIHandler()
 
+        # Initialize domain services (business logic descended out of this
+        # god class; api.py methods below are thin delegations to these).
+        self._analyze = AnalyzeService(self)
+        self._system = SystemService(self)
+        self._channel = ChannelService(self)
+        self._get_info = GetInfoService(self)
+        self._playlist = PlaylistService(self)
+        self._comments = CommentsService(self)
+        self._captions = CaptionsService(self)
+        self._search = SearchService(self)
+        self._download = DownloadService(self)
+
         # Initialize Core Sub-APIs (v1.0 Consolidated - 5 Core APIs)
         from .sub_apis import GetAPI, DownloadAPI, SearchAPI, AnalyzeAPI, StreamAPI
         self.get = GetAPI(self)
@@ -108,20 +129,7 @@ class YouTubeToolkit:
         Raises:
             RuntimeError: If all methods fail
         """
-        # Try pytubefix first (usually most reliable)
-        try:
-            return self.pytubefix.get_video_info(url)
-        except Exception as e:
-            print(f"PyTubeFix failed: {e}")
-        
-        # Fallback to yt-dlp
-        try:
-            return self.yt_dlp.get_video_info(url)
-        except Exception as e:
-            print(f"YT-DLP failed: {e}")
-        
-        # If both fail, raise error
-        raise RuntimeError("All video info extraction methods failed")
+        return self._get_info.get_video_info(url)
     
     def download_audio(self, url: str, format: str = 'wav', 
                        progress_callback: bool = True, prefer_yt_dlp: bool = False,
@@ -142,45 +150,9 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded audio file
         """
-        video_id = self.extract_video_id(url)
-        
-        # Standardize default output path for consistent behavior
-        if output_path is None:
-            # Get video title for consistent naming
-            try:
-                # Try to get title from pytubefix first
-                yt = self.pytubefix._yt(url)
-                title = self.pytubefix.sanitize_path(yt.title.replace(' ', '-'))
-            except:
-                # Fallback to video ID if title extraction fails
-                title = video_id
-            
-            # Create consistent default path in current working directory
-            default_path = os.path.join(os.getcwd(), f'{title}.{format}')
-            
-            # For pytubefix: use full path, for yt-dlp: use directory only
-            pytubefix_path = default_path
-            ytdlp_path = os.path.dirname(default_path)
-        else:
-            pytubefix_path = output_path
-            ytdlp_path = output_path
-        
-        if prefer_yt_dlp:
-            # Try yt-dlp first
-            try:
-                return self.yt_dlp.download_audio(video_id, output_path=ytdlp_path, format=format, progress_callback=progress_callback, bitrate=bitrate)
-            except Exception as e:
-                print(f"YT-DLP audio download failed: {e}")
-                # Fallback to pytubefix
-                return self.pytubefix.download_audio(url, output_path=pytubefix_path, format=format, progress_callback=progress_callback, bitrate=bitrate)
-        else:
-            # Try pytubefix first
-            try:
-                return self.pytubefix.download_audio(url, output_path=pytubefix_path, format=format, progress_callback=progress_callback, bitrate=bitrate)
-            except Exception as e:
-                print(f"PyTubeFix audio download failed: {e}")
-                # Fallback to yt-dlp
-                return self.yt_dlp.download_audio(video_id, output_path=ytdlp_path, format=format, progress_callback=progress_callback, bitrate=bitrate)
+        return self._download.download_audio(
+            url, format, progress_callback, prefer_yt_dlp, output_path, bitrate
+        )
     
     def download_video(self, url: str, quality: str = 'best',
                        progress_callback: bool = True, prefer_yt_dlp: bool = True,
@@ -204,56 +176,9 @@ class YouTubeToolkit:
             yt-dlp is now preferred by default due to better reliability and fewer
             broken pipe errors compared to PyTubeFix's MoviePy+ffmpeg combination.
         """
-        video_id = self.extract_video_id(url)
-        
-        # Standardize default output path for consistent behavior
-        if output_path is None:
-            # Get video title for consistent naming
-            try:
-                # Try to get title from pytubefix first
-                yt = self.pytubefix._yt(url)
-                title = self.pytubefix.sanitize_path(yt.title.replace(' ', '-'))
-            except:
-                # Fallback to video ID if title extraction fails
-                title = video_id
-            
-            # Create consistent default path in current working directory
-            default_path = os.path.join(os.getcwd(), f'{title}.mp4')
-            
-            # For pytubefix: use full path, for yt-dlp: use directory only
-            pytubefix_path = default_path
-            ytdlp_path = os.path.dirname(default_path)
-        else:
-            pytubefix_path = output_path
-            ytdlp_path = output_path
-        
-        # Use verbose setting to control progress display
-        effective_progress = progress_callback and self.verbose
-        
-        if prefer_yt_dlp:
-            # Try yt-dlp first
-            try:
-                if self.verbose:
-                    print("🎯 Trying YT-DLP first...")
-                return self.yt_dlp.download_video(video_id, output_path=ytdlp_path, quality=quality, progress_callback=effective_progress)
-            except Exception as e:
-                if self.verbose:
-                    print(f"YT-DLP video download failed: {e}")
-                    print("🔄 Falling back to PyTubeFix...")
-                # Fallback to pytubefix
-                return self.pytubefix.download_video(url, output_path=pytubefix_path, quality=quality, progress_callback=effective_progress)
-        else:
-            # Try pytubefix first
-            try:
-                if self.verbose:
-                    print("🎯 Trying PyTubeFix first (best quality)...")
-                return self.pytubefix.download_video(url, output_path=pytubefix_path, quality=quality, progress_callback=effective_progress)
-            except Exception as e:
-                if self.verbose:
-                    print(f"PyTubeFix video download failed: {e}")
-                    print("🔄 Falling back to YT-DLP...")
-                # Fallback to yt-dlp
-                return self.yt_dlp.download_video(video_id, output_path=ytdlp_path, quality=quality, progress_callback=effective_progress)
+        return self._download.download_video(
+            url, quality, progress_callback, prefer_yt_dlp, output_path
+        )
     
     def get_available_formats(self, url: str) -> Dict[str, Any]:
         """
@@ -267,20 +192,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary of available formats
         """
-        # Try pytubefix first
-        try:
-            return self.pytubefix.get_available_formats(url)
-        except Exception as e:
-            print(f"PyTubeFix formats failed: {e}")
-        
-        # Fallback to yt-dlp
-        try:
-            return self.yt_dlp.get_available_formats(url)
-        except Exception as e:
-            print(f"YT-DLP formats failed: {e}")
-        
-        # If both fail, return empty dict
-        return {}
+        return self._get_info.get_available_formats(url)
     
     def extract_video_id(self, url: str) -> str:
         """
@@ -317,7 +229,7 @@ class YouTubeToolkit:
         Returns:
             Video description text
         """
-        return self.yt_dlp.get_video_description(url)
+        return self._get_info.get_video_description(url)
     
     def test_handlers(self, url: str) -> Dict[str, bool]:
         """
@@ -329,27 +241,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with handler status
         """
-        results = {}
-        
-        # Test pytubefix
-        try:
-            results['pytubefix'] = self.pytubefix.test_connection(url)
-        except:
-            results['pytubefix'] = False
-        
-        # Test yt-dlp
-        try:
-            results['yt_dlp'] = self.yt_dlp.test_connection(url)
-        except:
-            results['yt_dlp'] = False
-        
-        # Test YouTube API
-        try:
-            results['youtube_api'] = self.youtube_api.test_connection(url)
-        except:
-            results['youtube_api'] = False
-        
-        return results
+        return self._system.test_handlers(url)
     
     def get_rich_metadata(self, url: str) -> Dict[str, Any]:
         """
@@ -361,7 +253,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with rich metadata
         """
-        return self.youtube_api.fetch_metadata(url)
+        return self._get_info.get_rich_metadata(url)
     
     def get_comments(self, url: str, max_results: int = 100,
                      sort_by: str = 'relevance') -> List[Dict[str, Any]]:
@@ -376,7 +268,7 @@ class YouTubeToolkit:
         Returns:
             List of comment dictionaries
         """
-        return self.youtube_api.get_comments(url, max_results=max_results, sort_by=sort_by)
+        return self._comments.get_comments(url, max_results=max_results, sort_by=sort_by)
     
     def advanced_get_comments(self, url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """
@@ -389,7 +281,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with comprehensive comment results including analytics
         """
-        return self.youtube_api.advanced_fetch_comments(url, filters)
+        return self._comments.advanced_get_comments(url, filters)
     
     def get_comments_paginated(self, url: str, page_token: Optional[str] = None,
                               max_results: int = 100, order: str = 'relevance') -> Dict[str, Any]:
@@ -405,15 +297,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with paginated comment results
         """
-        from .core.comments import CommentFilters
-        
-        filters = CommentFilters(
-            order=CommentFilters.Order(order),
-            page_token=page_token,
-            max_results=max_results
-        )
-        
-        return self.advanced_get_comments(url, filters)
+        return self._comments.get_comments_paginated(url, page_token, max_results, order)
     
     def search_comments(self, url: str, search_term: str, max_results: int = 100) -> Dict[str, Any]:
         """
@@ -427,14 +311,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with filtered comment results
         """
-        from .core.comments import CommentFilters
-        
-        filters = CommentFilters(
-            search_terms=search_term,
-            max_results=max_results
-        )
-        
-        return self.advanced_get_comments(url, filters)
+        return self._comments.search_comments(url, search_term, max_results)
     
     def get_high_engagement_comments(self, url: str, min_likes: int = 10,
                                    max_results: int = 50) -> Dict[str, Any]:
@@ -449,15 +326,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with high engagement comment results
         """
-        from .core.comments import CommentFilters
-        
-        filters = CommentFilters(
-            min_likes=min_likes,
-            max_results=max_results,
-            order=CommentFilters.Order.RATING
-        )
-        
-        return self.advanced_get_comments(url, filters)
+        return self._comments.get_high_engagement_comments(url, min_likes, max_results)
     
     def get_comments_by_author(self, url: str, author_channel_id: str,
                               max_results: int = 100) -> Dict[str, Any]:
@@ -472,14 +341,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with author-specific comment results
         """
-        from .core.comments import CommentFilters
-        
-        filters = CommentFilters(
-            author_channel_id=author_channel_id,
-            max_results=max_results
-        )
-        
-        return self.advanced_get_comments(url, filters)
+        return self._comments.get_comments_by_author(url, author_channel_id, max_results)
     
     def get_recent_comments(self, url: str, days_back: int = 7,
                            max_results: int = 100) -> Dict[str, Any]:
@@ -494,16 +356,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with recent comment results
         """
-        from .core.comments import CommentFilters
-        from datetime import datetime, timedelta
-        
-        filters = CommentFilters(
-            published_after=datetime.now() - timedelta(days=days_back),
-            max_results=max_results,
-            order=CommentFilters.Order.TIME
-        )
-        
-        return self.advanced_get_comments(url, filters)
+        return self._comments.get_recent_comments(url, days_back, max_results)
     
     def export_comments(self, url: str, format: str = 'json', 
                        output_path: Optional[str] = None, filters: Optional[Dict] = None) -> str:
@@ -519,58 +372,7 @@ class YouTubeToolkit:
         Returns:
             Path to exported file
         """
-        import json
-        import csv
-        import os
-        from datetime import datetime
-        
-        # Get comments
-        results = self.advanced_get_comments(url, filters)
-        comments = results.get('comments', [])
-        
-        if not comments:
-            raise ValueError("No comments found to export")
-        
-        # Generate output path if not provided
-        if not output_path:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"comments_export_{timestamp}.{format}"
-            output_path = os.path.join(os.getcwd(), filename)
-        
-        if format.lower() == 'json':
-            # Export as JSON
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(results, f, indent=2, ensure_ascii=False, default=str)
-        
-        elif format.lower() == 'csv':
-            # Export as CSV
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                
-                # Write header
-                writer.writerow([
-                    'Comment ID', 'Text', 'Author', 'Published At', 'Likes', 
-                    'Replies', 'Channel ID', 'Is Verified', 'Parent ID'
-                ])
-                
-                # Write comment data
-                for comment in comments:
-                    writer.writerow([
-                        comment.get('comment_id', ''),
-                        comment.get('text', ''),
-                        comment.get('author', {}).get('display_name', ''),
-                        comment.get('published_at', ''),
-                        comment.get('metrics', {}).get('like_count', 0),
-                        comment.get('metrics', {}).get('reply_count', 0),
-                        comment.get('author', {}).get('channel_id', ''),
-                        comment.get('author', {}).get('is_verified', False),
-                        comment.get('parent_id', '')
-                    ])
-        
-        else:
-            raise ValueError("Format must be 'json' or 'csv'")
-        
-        return output_path
+        return self._comments.export_comments(url, format, output_path, filters)
     
     def display_comments(self, url: str, top_n: int = 3,
                         sort_by: str = 'relevance') -> None:
@@ -582,19 +384,7 @@ class YouTubeToolkit:
             top_n: Number of top comments to display
             sort_by: Sort order ('relevance', 'time')
         """
-        comments = self.get_comments(url, max_results=top_n, sort_by=sort_by)
-        
-        if not comments:
-            print("No comments found for this video.")
-            return
-        
-        print(f"\n📝 Top {len(comments)} Comments:")
-        for i, comment in enumerate(comments, 1):
-            author = comment.get('author', 'Unknown')
-            text = comment.get('text', 'No text')
-            likes = comment.get('like_count', 0)
-            print(f"\n{i}. {author} (👍 {likes})")
-            print(f"   {text}")
+        return self._comments.display_comments(url, top_n, sort_by)
     
     def search_videos(self, query: str, filters: Optional[Dict] = None, max_results: int = 20) -> List[Dict[str, Any]]:
         """
@@ -608,71 +398,7 @@ class YouTubeToolkit:
         Returns:
             List of video dictionaries with search results
         """
-        results = []
-        
-        # Try pytubefix first
-        try:
-            pytube_results = self.pytubefix.search_videos(query, filters, max_results)
-            if pytube_results and len(pytube_results) > 0:
-                results.extend(pytube_results)
-                print(f"✅ PyTubeFix search returned {len(pytube_results)} results")
-            else:
-                print("⚠️  PyTubeFix search returned no results")
-        except Exception as e:
-            print(f"PyTubeFix search failed: {e}")
-        
-        # If PyTubeFix failed or returned no results, try simple search
-        if not results:
-            try:
-                print("🔍 Trying PyTubeFix simple search fallback...")
-                simple_results = self.pytubefix.simple_search(query, max_results)
-                if simple_results and len(simple_results) > 0:
-                    results.extend(simple_results)
-                    print(f"✅ PyTubeFix simple search returned {len(simple_results)} results")
-                else:
-                    print("⚠️  PyTubeFix simple search returned no results")
-            except Exception as e:
-                print(f"PyTubeFix simple search failed: {e}")
-        
-        # If we don't have enough results, try YouTube API
-        if len(results) < max_results:
-            try:
-                remaining_count = max_results - len(results)
-                print(f"🔍 Trying YouTube API for {remaining_count} more results...")
-                api_results = self.youtube_api.search_videos(query, remaining_count)
-                if api_results and len(api_results) > 0:
-                    results.extend(api_results)
-                    print(f"✅ YouTube API search returned {len(api_results)} additional results")
-                else:
-                    print("⚠️  YouTube API search returned no results")
-            except Exception as e:
-                print(f"YouTube API search failed: {e}")
-        
-        # If still no results, try yt-dlp as last resort
-        if not results:
-            try:
-                print("Trying yt-dlp search as fallback...")
-                # Note: yt-dlp doesn't have built-in search, but we can try to get video info
-                # This is a placeholder for future implementation
-                print("yt-dlp search not implemented yet")
-            except Exception as e:
-                print(f"yt-dlp search failed: {e}")
-        
-        # Limit results to requested max
-        if len(results) > max_results:
-            results = results[:max_results]
-        
-        if not results:
-            print("⚠️  All search methods failed. No results found.")
-            print("💡 Try:")
-            print("   1. Check your internet connection")
-            print("   2. Verify the search query is valid")
-            print("   3. Check if YouTube API key is set (for enhanced search)")
-            print("   4. Try a different search term")
-            return []
-        
-        print(f"🎯 Total search results: {len(results)}")
-        return results
+        return self._search.search_videos(query, filters, max_results)
     
     def advanced_search(self, query: str, filters: Optional[Dict] = None, max_results: int = 20) -> Dict[str, Any]:
         """
@@ -686,77 +412,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with comprehensive search results including thumbnails, live content, etc.
         """
-        from .core.search import SearchFilters
-        
-        # Convert dict to SearchFilters if needed
-        if isinstance(filters, dict):
-            filters = SearchFilters(**filters)
-        elif filters is None:
-            filters = SearchFilters()
-        
-        # Try YouTube API first for advanced search (most comprehensive)
-        try:
-            print(f"🔍 Advanced search: '{query}' with {filters.type} type, order: {filters.order}")
-            api_results = self.youtube_api.advanced_search(query, filters, max_results)
-            
-            if api_results and not api_results.get('error'):
-                print(f"✅ YouTube API advanced search returned {len(api_results.get('items', []))} results")
-                return api_results
-            else:
-                print(f"⚠️  YouTube API advanced search failed: {api_results.get('error', 'Unknown error')}")
-        except Exception as e:
-            print(f"YouTube API advanced search failed: {e}")
-        
-        # Fallback to basic search methods
-        print("🔄 Falling back to basic search methods...")
-        basic_results = self.search_videos(query, filters.__dict__ if filters else None, max_results)
-        
-        # Convert basic results to advanced format
-        from .core.search import SearchResult, SearchResultItem, Thumbnails, Thumbnail
-        from datetime import datetime
-        
-        items = []
-        for result in basic_results:
-            try:
-                # Parse published date
-                published_at = None
-                if result.get('publish_date'):
-                    try:
-                        published_at = datetime.fromisoformat(result['publish_date'].replace('Z', '+00:00'))
-                    except:
-                        pass
-                
-                # Create basic thumbnail (we don't have thumbnail data from basic search)
-                thumbnails = None
-                
-                item = SearchResultItem(
-                    kind="youtube#video",
-                    etag="",
-                    video_id=result.get('video_id'),
-                    title=result.get('title', ''),
-                    description=result.get('description', ''),
-                    channel_title=result.get('author', ''),
-                    published_at=published_at,
-                    thumbnails=thumbnails,
-                    live_broadcast_content="none"  # We don't have this info from basic search
-                )
-                items.append(item)
-            except Exception as item_error:
-                print(f"Warning: Failed to convert basic result: {item_error}")
-                continue
-        
-        # Create search result
-        search_result = SearchResult(
-            items=items,
-            total_results=len(items),
-            query=query,
-            filters_applied=filters,
-            backend_used='fallback',
-            next_page_token=None,
-            prev_page_token=None
-        )
-        
-        return search_result.to_dict()
+        return self._search.advanced_search(query, filters, max_results)
     
     def search_live_content(self, query: str, event_type: str = "live", max_results: int = 20) -> Dict[str, Any]:
         """
@@ -770,15 +426,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with live content search results
         """
-        from .core.search import SearchFilters
-        
-        filters = SearchFilters(
-            type="video",
-            event_type=event_type,
-            order="viewCount"  # Sort by current viewers for live content
-        )
-        
-        return self.advanced_search(query, filters, max_results)
+        return self._search.search_live_content(query, event_type, max_results)
     
     def search_by_category(self, query: str, category_name: str, max_results: int = 20) -> Dict[str, Any]:
         """
@@ -792,19 +440,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with category-filtered search results
         """
-        from .core.search import SearchFilters, YOUTUBE_CATEGORIES
-        
-        category_id = YOUTUBE_CATEGORIES.get(category_name)
-        if not category_id:
-            available_categories = list(YOUTUBE_CATEGORIES.keys())
-            raise ValueError(f"Unknown category '{category_name}'. Available categories: {available_categories}")
-        
-        filters = SearchFilters(
-            type="video",
-            video_category_id=category_id
-        )
-        
-        return self.advanced_search(query, filters, max_results)
+        return self._search.search_by_category(query, category_name, max_results)
     
     def search_sponsored_content(self, query: str, max_results: int = 20) -> Dict[str, Any]:
         """
@@ -817,14 +453,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with sponsored content search results
         """
-        from .core.search import SearchFilters
-        
-        filters = SearchFilters(
-            type="video",
-            video_paid_product_placement="true"
-        )
-        
-        return self.advanced_search(query, filters, max_results)
+        return self._search.search_sponsored_content(query, max_results)
     
     def search_with_boolean_query(self, boolean_query: str, filters: Optional[Dict] = None, max_results: int = 20) -> Dict[str, Any]:
         """
@@ -838,21 +467,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with search results
         """
-        from .core.search import SearchFilters, BooleanSearchQuery
-        
-        # Parse Boolean query
-        boolean_search = BooleanSearchQuery.from_string(boolean_query)
-        processed_query = boolean_search.build_query()
-        
-        # Apply additional filters
-        if isinstance(filters, dict):
-            search_filters = SearchFilters(**filters)
-        elif filters is None:
-            search_filters = SearchFilters()
-        else:
-            search_filters = filters
-        
-        return self.advanced_search(processed_query, search_filters, max_results)
+        return self._search.search_with_boolean_query(boolean_query, filters, max_results)
     
     def search_paginated(self, query: str, filters: Optional[Dict] = None, 
                         page_token: Optional[str] = None, max_results: int = 20) -> Dict[str, Any]:
@@ -868,20 +483,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with paginated search results
         """
-        from .core.search import SearchFilters
-        
-        if isinstance(filters, dict):
-            search_filters = SearchFilters(**filters)
-        elif filters is None:
-            search_filters = SearchFilters()
-        else:
-            search_filters = filters
-        
-        # Add pagination
-        search_filters.page_token = page_token
-        search_filters.max_results = max_results
-        
-        return self.advanced_search(query, search_filters, max_results)
+        return self._search.search_paginated(query, filters, page_token, max_results)
     
     def get_search_categories(self) -> Dict[str, str]:
         """
@@ -890,8 +492,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary mapping category names to IDs
         """
-        from .core.search import YOUTUBE_CATEGORIES
-        return YOUTUBE_CATEGORIES.copy()
+        return self._search.get_search_categories()
     
     def get_captions(self, url: str) -> Dict[str, Any]:
         """
@@ -903,11 +504,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with caption information
         """
-        try:
-            return self.pytubefix.get_captions(url)
-        except Exception as e:
-            print(f"PyTubeFix captions failed: {e}")
-            return {"error": str(e)}
+        return self._captions.get_captions(url)
     
     def download_captions(self, url: str, language_code: str = 'en', output_path: str = None) -> str:
         """
@@ -921,25 +518,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded caption file
         """
-        # Try PyTubeFix first (most reliable)
-        try:
-            return self.pytubefix.download_captions(url, language_code, output_path)
-        except Exception as e:
-            print(f"PyTubeFix captions failed: {e}")
-        
-        # Try YT-DLP second
-        try:
-            return self.yt_dlp.download_captions(url, language_code, output_path)
-        except Exception as e:
-            print(f"YT-DLP captions failed: {e}")
-        
-        # Try YouTube API last
-        try:
-            return self.youtube_api.download_captions(url, language_code, output_path)
-        except Exception as e:
-            print(f"YouTube API captions failed: {e}")
-        
-        raise RuntimeError("All caption download methods failed")
+        return self._captions.download_captions(url, language_code, output_path)
     
     def list_captions(self, url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """
@@ -952,7 +531,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with caption track information and analytics
         """
-        return self.youtube_api.advanced_list_captions(url, filters)
+        return self._captions.list_captions(url, filters)
     
     def advanced_download_captions(self, url: str, language_code: str = 'en',
                                  format: str = 'srt', output_path: Optional[str] = None) -> Dict[str, Any]:
@@ -968,62 +547,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with download results and analysis
         """
-        try:
-            # Try YouTube API first (requires OAuth2)
-            return self.youtube_api.advanced_download_captions(url, language_code=language_code, format=format, output_path=output_path)
-        except Exception as api_error:
-            # Fall back to yt-dlp handler
-            try:
-                print(f"YouTube API failed ({api_error}), falling back to yt-dlp...")
-                caption_path = self.yt_dlp.download_captions(url, language_code, output_path)
-                
-                # Read the downloaded caption content
-                with open(caption_path, 'r', encoding='utf-8') as f:
-                    raw_content = f.read()
-                
-                # Convert format if needed
-                from youtube_toolkit.core.captions import CaptionFormatConverter
-                converted_content = raw_content
-                if format.lower() == 'vtt':
-                    converted_content = CaptionFormatConverter.srt_to_vtt(raw_content)
-                elif format.lower() == 'txt':
-                    converted_content = CaptionFormatConverter.srt_to_txt(raw_content)
-                
-                # Save converted content if different format
-                if converted_content != raw_content:
-                    output_path = caption_path.replace('.srt', f'.{format}')
-                    with open(output_path, 'w', encoding='utf-8') as f:
-                        f.write(converted_content)
-                    caption_path = output_path
-                
-                # Basic analysis
-                from youtube_toolkit.core.captions import CaptionFormatConverter, CaptionAnalyzer
-                cues = CaptionFormatConverter.parse_srt(raw_content)
-                analysis = {
-                    'total_duration': sum(cue.duration for cue in cues),
-                    'word_count': sum(len(cue.text.split()) for cue in cues),
-                    'cue_count': len(cues),
-                    'average_cue_duration': sum(cue.duration for cue in cues) / len(cues) if cues else 0,
-                    'words_per_minute': CaptionAnalyzer.analyze_reading_speed(cues)['average_wpm'],
-                    'language_analysis': CaptionAnalyzer.analyze_language(converted_content),
-                    'gaps': CaptionAnalyzer.find_gaps(cues)
-                }
-                
-                return {
-                    'success': True,
-                    'output_path': caption_path,
-                    'caption_id': 'yt-dlp-fallback',
-                    'language_code': language_code,
-                    'format': format,
-                    'analysis': analysis,
-                    'quota_cost': 0
-                }
-            except Exception as ytdlp_error:
-                return {
-                    'success': False,
-                    'error': f"YouTube API failed: {api_error}. yt-dlp fallback failed: {ytdlp_error}",
-                    'quota_cost': 0
-                }
+        return self._captions.advanced_download_captions(url, language_code, format, output_path)
     
     def get_captions_in_format(self, url: str, language_code: str = 'en',
                               format: str = 'vtt') -> str:
@@ -1038,13 +562,7 @@ class YouTubeToolkit:
         Returns:
             Caption content as string
         """
-        result = self.advanced_download_captions(url, language_code, format)
-        
-        if result.get('success'):
-            with open(result['output_path'], 'r', encoding='utf-8') as f:
-                return f.read()
-        else:
-            raise RuntimeError(f"Failed to get captions: {result.get('error')}")
+        return self._captions.get_captions_in_format(url, language_code, format)
     
     def search_captions(self, url: str, search_term: str, language_code: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1058,40 +576,7 @@ class YouTubeToolkit:
         Returns:
             List of matching caption cues with timestamps
         """
-        from .core.captions import CaptionFormatConverter
-        
-        # Download captions
-        result = self.advanced_download_captions(url, language_code, 'srt')
-        
-        if not result.get('success'):
-            raise RuntimeError(f"Failed to download captions: {result.get('error')}")
-        
-        # Parse captions
-        if 'content' in result:
-            raw_content = result['content'].raw_content
-        else:
-            # Fallback case - read from file
-            with open(result['output_path'], 'r', encoding='utf-8') as f:
-                raw_content = f.read()
-        
-        from youtube_toolkit.core.captions import CaptionFormatConverter
-        cues = CaptionFormatConverter.parse_srt(raw_content)
-        
-        # Search for term
-        matching_cues = []
-        search_lower = search_term.lower()
-        
-        for cue in cues:
-            if search_lower in cue.text.lower():
-                matching_cues.append({
-                    'start_time': cue.start_time,
-                    'end_time': cue.end_time,
-                    'text': cue.text,
-                    'formatted_start': cue.formatted_start,
-                    'formatted_end': cue.formatted_end
-                })
-        
-        return matching_cues
+        return self._captions.search_captions(url, search_term, language_code)
     
     def get_caption_analytics(self, url: str, language_code: str = 'en') -> Dict[str, Any]:
         """
@@ -1104,12 +589,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with caption analytics
         """
-        result = self.advanced_download_captions(url, language_code, 'srt')
-        
-        if not result.get('success'):
-            raise RuntimeError(f"Failed to download captions: {result.get('error')}")
-        
-        return result['analysis']
+        return self._captions.get_caption_analytics(url, language_code)
     
     def export_captions(self, url: str, format: str = 'json', 
                        output_path: Optional[str] = None, language_code: str = 'en') -> str:
@@ -1125,74 +605,7 @@ class YouTubeToolkit:
         Returns:
             Path to exported file
         """
-        import json
-        import csv
-        import os
-        from datetime import datetime
-        
-        # Get caption data
-        result = self.advanced_download_captions(url, language_code, 'srt')
-        
-        if not result.get('success'):
-            raise RuntimeError(f"Failed to download captions: {result.get('error')}")
-        
-        # Generate output path if not provided
-        if not output_path:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"captions_export_{timestamp}.{format}"
-            output_path = os.path.join(os.getcwd(), filename)
-        
-        if format.lower() == 'json':
-            # Export as JSON with metadata
-            export_data = {
-                'video_url': url,
-                'language_code': language_code,
-                'caption_id': result['caption_id'],
-                'analysis': result['analysis'],
-                'cues': [
-                    {
-                        'start_time': cue.start_time,
-                        'end_time': cue.end_time,
-                        'text': cue.text,
-                        'formatted_start': cue.formatted_start,
-                        'formatted_end': cue.formatted_end
-                    } for cue in result['content'].cues
-                ]
-            }
-            
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, indent=2, ensure_ascii=False, default=str)
-        
-        elif format.lower() == 'csv':
-            # Export as CSV
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                
-                # Write header
-                writer.writerow(['Start Time', 'End Time', 'Duration', 'Text', 'Formatted Start', 'Formatted End'])
-                
-                # Write cue data
-                for cue in result['content'].cues:
-                    writer.writerow([
-                        cue.start_time,
-                        cue.end_time,
-                        cue.duration,
-                        cue.text,
-                        cue.formatted_start,
-                        cue.formatted_end
-                    ])
-        
-        elif format.lower() in ['srt', 'vtt', 'txt']:
-            # Export in caption format
-            caption_result = self.advanced_download_captions(url, language_code, format, output_path)
-            if not caption_result.get('success'):
-                raise RuntimeError(f"Failed to export captions: {caption_result.get('error')}")
-            output_path = caption_result['output_path']
-        
-        else:
-            raise ValueError("Format must be 'json', 'csv', 'srt', 'vtt', or 'txt'")
-        
-        return output_path
+        return self._captions.export_captions(url, format, output_path, language_code)
     
     def get_best_caption_track(self, url: str, preferred_language: str = 'en') -> Optional[Dict[str, Any]]:
         """
@@ -1205,159 +618,27 @@ class YouTubeToolkit:
         Returns:
             Dictionary with best caption track information
         """
-        caption_list = self.list_captions(url)
-        tracks = caption_list.get('tracks', [])
-        
-        if not tracks:
-            return None
-        
-        # Find best track using CaptionResult logic
-        from .core.captions import CaptionResult
-        result = CaptionResult(tracks=tracks)
-        best_track = result.get_best_track(preferred_language)
-        
-        if best_track:
-            return {
-                'caption_id': best_track.caption_id,
-                'language': best_track.language,
-                'language_code': best_track.language_code,
-                'name': best_track.name,
-                'track_type': best_track.track_type.value,
-                'status': best_track.status.value,
-                'is_auto_generated': best_track.is_auto_generated,
-                'is_cc': best_track.is_cc,
-                'display_name': best_track.display_name
-            }
-        
-        return None
+        return self._captions.get_best_caption_track(url, preferred_language)
     
     def get_anti_detection_status(self) -> Dict[str, Any]:
         """Get comprehensive anti-detection status."""
-        return {
-            'global_status': self.anti_detection.get_status(),
-            'handlers': {
-                'pytubefix': self.pytubefix.get_anti_detection_status(),
-                'yt_dlp': self.yt_dlp.get_anti_detection_status(),
-                'youtube_api': {
-                    'note': 'Official API - no anti-detection needed',
-                    'status': 'active'
-                }
-            }
-        }
-    
+        return self._system.get_anti_detection_status()
+
     def test_anti_detection(self, url: str) -> Dict[str, Any]:
         """Test anti-detection system with a simple request."""
-        import time
-        
-        try:
-            print("🧪 Testing anti-detection system...")
-            
-            # Test each handler with anti-detection
-            results = {}
-            
-            # Test PyTubeFix
-            print("  Testing PyTubeFix...")
-            start_time = time.time()
-            info = self.pytubefix.get_video_info(url)
-            pytubefix_time = time.time() - start_time
-            results['pytubefix'] = {
-                'success': info is not None,
-                'time_taken': pytubefix_time,
-                'anti_detection_status': self.pytubefix.get_anti_detection_status()
-            }
-            
-            # Test YT-DLP
-            print("  Testing YT-DLP...")
-            start_time = time.time()
-            info = self.yt_dlp.get_video_info(url)
-            ytdlp_time = time.time() - start_time
-            results['yt_dlp'] = {
-                'success': info is not None,
-                'time_taken': ytdlp_time,
-                'anti_detection_status': self.yt_dlp.get_anti_detection_status()
-            }
-            
-            # Test YouTube API
-            print("  Testing YouTube API...")
-            start_time = time.time()
-            metadata = self.youtube_api.fetch_metadata(url)
-            api_time = time.time() - start_time
-            results['youtube_api'] = {
-                'success': 'error' not in metadata,
-                'time_taken': api_time,
-                'note': 'Official API - no anti-detection needed'
-            }
-            
-            # Overall status
-            results['overall'] = {
-                'all_successful': all(r['success'] for r in results.values() if isinstance(r, dict) and 'success' in r),
-                'total_time': sum(r['time_taken'] for r in results.values() if isinstance(r, dict) and 'time_taken' in r),
-                'global_anti_detection': self.anti_detection.get_status()
-            }
-            
-            print("✅ Anti-detection test completed!")
-            return results
-            
-        except Exception as e:
-            print(f"❌ Anti-detection test failed: {e}")
-            return {'error': str(e)}
+        return self._system.test_anti_detection(url)
 
     def test_search(self, query: str = "test") -> Dict[str, Any]:
         """
         Test search functionality across all handlers.
-        
+
         Args:
             query: Test search query
-            
+
         Returns:
             Dictionary with search test results
         """
-        print(f"🔍 Testing search functionality with query: '{query}'")
-        
-        results = {}
-        
-        # Test PyTubeFix search
-        try:
-            pytube_results = self.pytubefix.search_videos(query, max_results=3)
-            results['pytubefix'] = {
-                'success': True,
-                'count': len(pytube_results),
-                'sample': pytube_results[0] if pytube_results else None
-            }
-            print(f"✅ PyTubeFix: {len(pytube_results)} results")
-        except Exception as e:
-            results['pytubefix'] = {
-                'success': False,
-                'error': str(e)
-            }
-            print(f"❌ PyTubeFix: {e}")
-        
-        # Test YouTube API search
-        try:
-            api_results = self.youtube_api.search_videos(query, max_results=3)
-            results['youtube_api'] = {
-                'success': True,
-                'count': len(api_results),
-                'sample': api_results[0] if api_results else None
-            }
-            print(f"✅ YouTube API: {len(api_results)} results")
-        except Exception as e:
-            results['youtube_api'] = {
-                'success': False,
-                'error': str(e)
-            }
-            print(f"❌ YouTube API: {e}")
-        
-        # Overall status
-        working_handlers = sum(1 for r in results.values() if r.get('success', False))
-        results['overall'] = {
-            'working_handlers': working_handlers,
-            'total_handlers': len(results),
-            'all_working': working_handlers == len(results)
-        }
-        
-        print(f"🎯 Search test completed: {working_handlers}/{len(results)} handlers working")
-        return results
+        return self._system.test_search(query)
     
     def get_playlist_urls(self, playlist_url: str) -> List[str]:
         """
@@ -1369,34 +650,7 @@ class YouTubeToolkit:
         Returns:
             List of video URLs
         """
-        import time
-        
-        # Try YouTube API first (most reliable)
-        try:
-            urls = self.youtube_api.get_playlist_urls(playlist_url)
-            if urls:
-                return urls
-        except Exception as e:
-            print(f"YouTube API playlist failed: {e}")
-        
-        # Try PyTubeFix second
-        try:
-            urls = self.pytubefix.get_playlist_urls(playlist_url)
-            if urls:
-                return urls
-        except Exception as e:
-            print(f"PyTubeFix playlist failed: {e}")
-        
-        # Try YT-DLP last
-        try:
-            urls = self.yt_dlp.get_playlist_urls(playlist_url)
-            if urls:
-                return urls
-        except Exception as e:
-            print(f"YT-DLP playlist failed: {e}")
-        
-        print("❌ All playlist methods failed")
-        return []
+        return self._playlist.get_playlist_urls(playlist_url)
     
     def download_playlist_media(self, playlist_url: str, media_type: str = 'audio', 
                                format: str = 'wav', quality: str = 'best',
@@ -1415,181 +669,9 @@ class YouTubeToolkit:
         Returns:
             Dictionary with results summary
         """
-        import json
-        import os
-        import time
-        from datetime import datetime
-        
-        # Get playlist info and URLs
-        try:
-            playlist_info = self.youtube_api.get_playlist_info(playlist_url)
-        except:
-            playlist_info = {
-                'title': 'YouTube Playlist',
-                'description': 'Playlist downloaded with YouTube Toolkit'
-            }
-        
-        urls = self.get_playlist_urls(playlist_url)
-        if not urls:
-            return {'success': False, 'error': 'No videos found in playlist'}
-        
-        # Create folder structure
-        base_dir = os.path.join(os.getcwd(), 'playlist_downloads')
-        playlist_dir = os.path.join(base_dir, self._sanitize_filename(playlist_info['title']))
-        
-        folders = {
-            'base': playlist_dir,
-            'audio': os.path.join(playlist_dir, 'audio'),
-            'video': os.path.join(playlist_dir, 'video'),
-            'captions': os.path.join(playlist_dir, 'captions')
-        }
-        
-        # Create directories
-        for folder in folders.values():
-            os.makedirs(folder, exist_ok=True)
-        
-        # Initialize metadata
-        metadata = {
-            'playlist_info': {
-                'title': playlist_info['title'],
-                'description': playlist_info.get('description', ''),
-                'video_count': len(urls),
-                'playlist_url': playlist_url,
-                'download_date': datetime.now().isoformat(),
-                'download_settings': {
-                    'media_type': media_type,
-                    'format': format,
-                    'quality': quality,
-                    'include_captions': include_captions
-                }
-            },
-            'videos': [],
-            'download_summary': {
-                'total_videos': len(urls),
-                'successful_downloads': 0,
-                'failed_downloads': 0,
-                'total_size_mb': 0,
-                'download_time_seconds': 0
-            }
-        }
-        
-        start_time = time.time()
-        
-        # Download each video
-        for i, url in enumerate(urls, 1):
-            try:
-                print(f"📥 [{i}/{len(urls)}] Processing...")
-                
-                # Get video info
-                video_info = self.get_video_info(url)
-                video_title = self._sanitize_filename(video_info['title'])
-                
-                # Download main media
-                if media_type == 'audio':
-                    media_path = self.download_audio(
-                        url, 
-                        format=format, 
-                        output_path=os.path.join(folders['audio'], f"{video_title}.{format}"),
-                        bitrate=audio_bitrate
-                    )
-                else:  # video
-                    media_path = self.download_video(
-                        url, 
-                        quality=quality,
-                        output_path=os.path.join(folders['video'], f"{video_title}.mp4")
-                    )
-                
-                # Download captions if requested
-                caption_path = None
-                if include_captions:
-                    try:
-                        caption_path = self.download_captions(
-                            url, 
-                            language_code='en',
-                            output_path=os.path.join(folders['captions'], f"{video_title}_en.txt")
-                        )
-                    except Exception as e:
-                        print(f"⚠️  Captions failed: {e}")
-                        # Continue without captions rather than failing the whole download
-                
-                # Update metadata
-                video_metadata = {
-                    'index': i,
-                    'video_id': video_info.get('video_id', ''),
-                    'title': video_info['title'],
-                    'channel': video_info.get('channel', 'Unknown'),
-                    'duration': video_info.get('duration', 0),
-                    'views': video_info.get('view_count', 0),
-                    'upload_date': video_info.get('upload_date', ''),
-                    'download_status': 'success',
-                    'files': {
-                        'audio': os.path.relpath(media_path, playlist_dir) if media_type == 'audio' else None,
-                        'video': os.path.relpath(media_path, playlist_dir) if media_type == 'video' else None,
-                        'caption': os.path.relpath(caption_path, playlist_dir) if caption_path else None
-                    },
-                    'error': None
-                }
-                
-                metadata['videos'].append(video_metadata)
-                metadata['download_summary']['successful_downloads'] += 1
-                
-                print(f"✅ Downloaded: {video_title}")
-                
-            except Exception as e:
-                error_msg = f"Video {i} failed: {e}"
-                print(f"❌ {error_msg}")
-                
-                # Add failed video to metadata
-                video_metadata = {
-                    'index': i,
-                    'video_id': self.extract_video_id(url),
-                    'title': f"Video {i}",
-                    'channel': 'Unknown',
-                    'duration': 0,
-                    'views': 0,
-                    'upload_date': '',
-                    'download_status': 'failed',
-                    'files': {'audio': None, 'video': None, 'caption': None},
-                    'error': str(e)
-                }
-                
-                metadata['videos'].append(video_metadata)
-                metadata['download_summary']['failed_downloads'] += 1
-        
-        # Calculate final statistics
-        end_time = time.time()
-        metadata['download_summary']['download_time_seconds'] = end_time - start_time
-        
-        # Calculate total size
-        total_size = 0
-        for video in metadata['videos']:
-            if video['download_status'] == 'success':
-                for file_path in video['files'].values():
-                    if file_path and os.path.exists(os.path.join(playlist_dir, file_path)):
-                        total_size += os.path.getsize(os.path.join(playlist_dir, file_path))
-        
-        metadata['download_summary']['total_size_mb'] = round(total_size / (1024 * 1024), 2)
-        
-        # Save metadata
-        metadata_path = os.path.join(playlist_dir, 'metadata.json')
-        with open(metadata_path, 'w', encoding='utf-8') as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-        
-        # Print summary
-        print(f"\n🎯 Playlist download complete!")
-        print(f"   📁 Saved to: {playlist_dir}")
-        print(f"   📊 Metadata: {metadata_path}")
-        print(f"   ✅ Successful: {metadata['download_summary']['successful_downloads']}/{len(urls)}")
-        print(f"   ❌ Failed: {metadata['download_summary']['failed_downloads']}")
-        print(f"   💾 Total size: {metadata['download_summary']['total_size_mb']} MB")
-        print(f"   ⏱️  Time: {metadata['download_summary']['download_time_seconds']:.1f} seconds")
-        
-        return {
-            'success': True,
-            'playlist_dir': playlist_dir,
-            'metadata_path': metadata_path,
-            'metadata': metadata
-        }
+        return self._playlist.download_playlist_media(
+            playlist_url, media_type, format, quality, include_captions, audio_bitrate
+        )
     
     def _sanitize_filename(self, filename: str) -> str:
         """Convert filename to safe format for file system."""
@@ -1631,29 +713,7 @@ class YouTubeToolkit:
             >>> # For unlimited videos (requires scrapetube)
             >>> all_videos = toolkit.get_channel_videos("@Fireship", use_scrapetube=True)
         """
-        if use_scrapetube:
-            # Try scrapetube for unlimited results
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                scrapetube = ScrapeTubeHandler()
-
-                if content_type == 'videos':
-                    return scrapetube.get_channel_videos(channel, limit=limit, sort_by=sort_by)
-                elif content_type == 'shorts':
-                    return scrapetube.get_channel_shorts(channel, limit=limit)
-                elif content_type == 'live':
-                    return scrapetube.get_channel_streams(channel, limit=limit)
-                else:
-                    # Fallback to pytubefix for playlists
-                    return self.pytubefix.get_channel_videos(channel, content_type, limit, sort_by)
-
-            except ImportError:
-                if self.verbose:
-                    print("⚠️ scrapetube not installed. Falling back to pytubefix.")
-                    print("   Install with: pip install youtube-toolkit[scrapers]")
-
-        # Use pytubefix (default)
-        return self.pytubefix.get_channel_videos(channel, content_type, limit, sort_by)
+        return self._channel.get_channel_videos(channel, content_type, limit, sort_by, use_scrapetube)
 
     def get_channel_info(self, channel_url: str) -> Dict[str, Any]:
         """
@@ -1670,7 +730,7 @@ class YouTubeToolkit:
             >>> print(f"Channel: {info['channel_name']}")
             >>> print(f"Videos: {info['video_count']}")
         """
-        return self.pytubefix.get_channel_info(channel_url)
+        return self._channel.get_channel_info(channel_url)
 
     def get_all_channel_videos(self, channel: str,
                                content_type: str = 'videos') -> List[Dict[str, Any]]:
@@ -1695,24 +755,7 @@ class YouTubeToolkit:
             >>> all_videos = toolkit.get_all_channel_videos("@Fireship")
             >>> print(f"Total videos: {len(all_videos)}")
         """
-        try:
-            from .handlers.scrapetube_handler import ScrapeTubeHandler
-            scrapetube = ScrapeTubeHandler()
-
-            if content_type == 'videos':
-                return scrapetube.get_channel_videos(channel, limit=None)
-            elif content_type == 'shorts':
-                return scrapetube.get_channel_shorts(channel, limit=None)
-            elif content_type == 'streams':
-                return scrapetube.get_channel_streams(channel, limit=None)
-            else:
-                raise ValueError(f"Invalid content_type: {content_type}")
-
-        except ImportError:
-            raise ImportError(
-                "scrapetube is required for unlimited channel videos. "
-                "Install with: pip install youtube-toolkit[scrapers]"
-            )
+        return self._channel.get_all_channel_videos(channel, content_type)
 
     # =========================================================================
     # VIDEO CHAPTERS & ENGAGEMENT (v0.3+)
@@ -1733,7 +776,7 @@ class YouTubeToolkit:
             >>> for ch in chapters:
             ...     print(f"{ch['formatted_start']} - {ch['title']}")
         """
-        return self.pytubefix.get_video_chapters(url)
+        return self._get_info.get_video_chapters(url)
 
     def get_key_moments(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -1745,7 +788,7 @@ class YouTubeToolkit:
         Returns:
             List of key moment dicts with title, start_seconds, duration
         """
-        return self.pytubefix.get_key_moments(url)
+        return self._get_info.get_key_moments(url)
 
     def get_replayed_heatmap(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -1757,7 +800,7 @@ class YouTubeToolkit:
         Returns:
             List of heatmap segments with start_seconds, duration, intensity
         """
-        return self.pytubefix.get_replayed_heatmap(url)
+        return self._analyze.get_replayed_heatmap(url)
 
     # =========================================================================
     # ADVANCED SEARCH (PYTUBEFIX) (v0.3+)
@@ -1798,14 +841,8 @@ class YouTubeToolkit:
             >>> for video in results['videos']:
             ...     print(video['title'])
         """
-        return self.pytubefix.advanced_search(
-            query=query,
-            duration=duration,
-            upload_date=upload_date,
-            sort_by=sort_by,
-            features=features,
-            result_type=result_type,
-            max_results=max_results
+        return self._search.search_with_filters(
+            query, duration, upload_date, sort_by, features, result_type, max_results
         )
 
     # =========================================================================
@@ -1826,7 +863,7 @@ class YouTubeToolkit:
             >>> info = toolkit.get_playlist_info("https://youtube.com/playlist?list=...")
             >>> print(f"Playlist: {info['title']} ({info['video_count']} videos)")
         """
-        return self.pytubefix.get_playlist_info(playlist_url)
+        return self._playlist.get_playlist_info(playlist_url)
 
     # =========================================================================
     # SCRAPETUBE SEARCH (v0.3+)
@@ -1854,15 +891,7 @@ class YouTubeToolkit:
             >>> for video in results:
             ...     print(f"{video['title']} - {video['views']} views")
         """
-        try:
-            from .handlers.scrapetube_handler import ScrapeTubeHandler
-            scrapetube = ScrapeTubeHandler()
-            return scrapetube.search(query, limit=limit, sort_by=sort_by)
-
-        except ImportError:
-            if self.verbose:
-                print("⚠️ scrapetube not installed. Using pytubefix search.")
-            return self.pytubefix.search_videos(query, max_results=limit)
+        return self._search.search_without_api(query, limit, sort_by)
 
     # =========================================================================
     # NEW CLEAN API (v0.2+)
@@ -1890,22 +919,7 @@ class YouTubeToolkit:
             >>> print(video.title)
             >>> print(video.duration)
         """
-        # Get raw dict from existing method
-        data = self.get_video_info(url)
-
-        # Convert to VideoInfo dataclass
-        return VideoInfo(
-            title=data.get('title', ''),
-            duration=data.get('duration', 0),
-            views=data.get('view_count', 0),
-            author=data.get('channel', data.get('author', '')),
-            video_id=data.get('video_id', ''),
-            url=data.get('video_url', url),
-            description=data.get('description'),
-            thumbnail=data.get('thumbnail_url'),
-            published_date=data.get('upload_date'),
-            like_count=data.get('like_count'),
-        )
+        return self._get_info.get_video(url)
 
     def download(
         self,
@@ -1943,60 +957,7 @@ class YouTubeToolkit:
             >>> if result.success:
             ...     print(f"Downloaded to {result.file_path}")
         """
-        start_time = time.time()
-        backend_used = None
-
-        try:
-            if type == 'audio':
-                file_path = self.download_audio(
-                    url,
-                    format=format,
-                    output_path=output_path,
-                    bitrate=bitrate,
-                    progress_callback=progress,
-                )
-                backend_used = 'pytubefix/yt-dlp'
-                result_format = format
-                result_quality = bitrate
-            elif type == 'video':
-                file_path = self.download_video(
-                    url,
-                    quality=quality,
-                    output_path=output_path,
-                    progress_callback=progress,
-                )
-                backend_used = 'yt-dlp/pytubefix'
-                result_format = 'mp4'
-                result_quality = quality
-            else:
-                raise ValueError(f"Invalid type: {type}. Must be 'audio' or 'video'")
-
-            download_time = time.time() - start_time
-
-            # Get file size if file exists
-            file_size = None
-            if os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
-
-            return DownloadResult(
-                file_path=file_path,
-                success=True,
-                file_size=file_size,
-                download_time=download_time,
-                format=result_format,
-                quality=result_quality,
-                backend_used=backend_used,
-            )
-
-        except Exception as e:
-            download_time = time.time() - start_time
-            return DownloadResult(
-                file_path=output_path or '',
-                success=False,
-                error_message=str(e),
-                download_time=download_time,
-                backend_used=backend_used,
-            )
+        return self._download.download(url, type, format, quality, output_path, bitrate, progress)
 
     def search(
         self,
@@ -2027,40 +988,7 @@ class YouTubeToolkit:
             >>> filters = SearchFilters(video_duration='short', order='viewCount')
             >>> results = toolkit.search('music', filters=filters)
         """
-        if filters is None:
-            filters = SearchFilters()
-
-        filters.max_results = max_results
-
-        # Use existing advanced_search which returns dict
-        raw_result = self.advanced_search(query, filters, max_results)
-
-        # If already a SearchResult dict format, convert items
-        items = []
-        raw_items = raw_result.get('items', [])
-
-        for item in raw_items:
-            if isinstance(item, SearchResultItem):
-                items.append(item)
-            elif isinstance(item, dict):
-                items.append(SearchResultItem(
-                    kind=item.get('kind', 'youtube#video'),
-                    etag=item.get('etag', ''),
-                    video_id=item.get('video_id', item.get('id', {}).get('videoId', '')),
-                    title=item.get('title', item.get('snippet', {}).get('title', '')),
-                    description=item.get('description', item.get('snippet', {}).get('description', '')),
-                    channel_title=item.get('channel_title', item.get('snippet', {}).get('channelTitle', '')),
-                ))
-
-        return SearchResult(
-            items=items,
-            total_results=raw_result.get('total_results', len(items)),
-            query=query,
-            filters_applied=filters,
-            backend_used=raw_result.get('backend_used', 'mixed'),
-            next_page_token=raw_result.get('next_page_token'),
-            prev_page_token=raw_result.get('prev_page_token'),
-        )
+        return self._search.search(query, max_results, filters)
 
     def comments(
         self,
@@ -2092,64 +1020,7 @@ class YouTubeToolkit:
             >>> filters = CommentFilters(order=CommentOrder.TIME, min_likes=10)
             >>> result = toolkit.comments(url, filters=filters)
         """
-        if filters is None:
-            filters = CommentFilters(max_results=max_results)
-        else:
-            filters.max_results = max_results
-
-        # Use existing advanced_get_comments
-        raw_result = self.advanced_get_comments(url, filters)
-
-        # Convert raw comments to Comment objects
-        comments = []
-        raw_comments = raw_result.get('comments', [])
-
-        for raw in raw_comments:
-            if isinstance(raw, Comment):
-                comments.append(raw)
-            elif isinstance(raw, dict):
-                author_data = raw.get('author', {})
-                metrics_data = raw.get('metrics', {})
-
-                author = CommentAuthor(
-                    display_name=author_data.get('display_name', 'Unknown'),
-                    channel_id=author_data.get('channel_id'),
-                    profile_image_url=author_data.get('profile_image_url'),
-                    is_verified=author_data.get('is_verified', False),
-                    is_channel_owner=author_data.get('is_channel_owner', False),
-                )
-
-                metrics = CommentMetrics(
-                    like_count=metrics_data.get('like_count', 0),
-                    reply_count=metrics_data.get('reply_count', 0),
-                )
-
-                from datetime import datetime
-                published_at = raw.get('published_at')
-                if isinstance(published_at, str):
-                    try:
-                        published_at = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                    except:
-                        published_at = datetime.now()
-                elif not isinstance(published_at, datetime):
-                    published_at = datetime.now()
-
-                comments.append(Comment(
-                    comment_id=raw.get('comment_id', ''),
-                    text=raw.get('text', ''),
-                    author=author,
-                    published_at=published_at,
-                    metrics=metrics,
-                    parent_id=raw.get('parent_id'),
-                ))
-
-        return CommentResult(
-            comments=comments,
-            total_results=raw_result.get('total_results', len(comments)),
-            next_page_token=raw_result.get('next_page_token'),
-            filters_applied=filters,
-            quota_cost=raw_result.get('quota_cost', 1),
-        )
+        return self._comments.comments(url, max_results, filters)
 
     def captions(
         self,
@@ -2180,22 +1051,7 @@ class YouTubeToolkit:
             >>> if best:
             ...     print(f"Best track: {best.name}")
         """
-        # Use existing list_captions
-        raw_result = self.list_captions(url, filters)
-
-        # Convert to CaptionResult
-        tracks = []
-        raw_tracks = raw_result.get('tracks', [])
-
-        for raw in raw_tracks:
-            if isinstance(raw, CaptionTrack):
-                tracks.append(raw)
-            # If it's a dict, the list_captions should have already converted it
-
-        return CaptionResult(
-            tracks=tracks,
-            quota_cost=raw_result.get('quota_cost', 0),
-        )
+        return self._captions.captions(url, language, filters)
 
     def playlist(self, url: str) -> List[str]:
         """
@@ -2216,7 +1072,7 @@ class YouTubeToolkit:
             ...     video = toolkit.get_video(video_url)
             ...     print(video.title)
         """
-        return self.get_playlist_urls(url)
+        return self._playlist.playlist(url)
 
     # ==================== v0.5 FEATURES ====================
 
@@ -2235,7 +1091,7 @@ class YouTubeToolkit:
         Returns:
             List of segment dictionaries with category, start/end times, etc.
         """
-        return self.yt_dlp.get_sponsorblock_segments(url)
+        return self._analyze.get_sponsorblock_segments(url)
 
     def download_with_sponsorblock(self, url: str, output_path: str = None,
                                    action: str = 'remove',
@@ -2252,7 +1108,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded file
         """
-        return self.yt_dlp.download_with_sponsorblock(url, output_path, action, categories)
+        return self._download.download_with_sponsorblock(url, output_path, action, categories)
 
     # --- Live Stream Methods ---
 
@@ -2266,7 +1122,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with is_live, was_live, live_status, release_timestamp, etc.
         """
-        return self.yt_dlp.get_live_status(url)
+        return self._analyze.get_live_status(url)
 
     def download_live_stream(self, url: str, output_path: str = None,
                              from_start: bool = False,
@@ -2283,7 +1139,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded file
         """
-        return self.yt_dlp.download_live_stream(url, output_path, from_start, duration)
+        return self._download.download_live_stream(url, output_path, from_start, duration)
 
     def is_live(self, url: str) -> bool:
         """
@@ -2295,8 +1151,7 @@ class YouTubeToolkit:
         Returns:
             True if currently live, False otherwise
         """
-        status = self.get_live_status(url)
-        return status.get('is_live', False)
+        return self._analyze.is_live(url)
 
     # --- Archive Methods ---
 
@@ -2315,7 +1170,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded file, or None if already in archive
         """
-        return self.yt_dlp.download_with_archive(url, output_path, archive_file, format)
+        return self._download.download_with_archive(url, output_path, archive_file, format)
 
     def is_in_archive(self, url: str, archive_file: str) -> bool:
         """
@@ -2328,7 +1183,7 @@ class YouTubeToolkit:
         Returns:
             True if video is in archive, False otherwise
         """
-        return self.yt_dlp.is_in_archive(url, archive_file)
+        return self._download.is_in_archive(url, archive_file)
 
     # --- Engagement Methods ---
 
@@ -2342,19 +1197,7 @@ class YouTubeToolkit:
         Returns:
             List of heatmap segments with start_time, end_time, and value (intensity)
         """
-        # Try yt-dlp first (more reliable for heatmap)
-        try:
-            result = self.yt_dlp.get_heatmap(url)
-            if result:
-                return result
-        except Exception:
-            pass
-
-        # Fallback to pytubefix
-        try:
-            return self.pytubefix.get_replayed_heatmap(url)
-        except Exception:
-            return []
+        return self._analyze.get_heatmap(url)
 
     def get_comments_raw(self, url: str, max_comments: int = 100,
                          sort: str = 'top') -> List[Dict[str, Any]]:
@@ -2369,7 +1212,7 @@ class YouTubeToolkit:
         Returns:
             List of comment dictionaries with author, text, likes, replies, etc.
         """
-        return self.yt_dlp.get_comments(url, max_comments, sort)
+        return self._comments.get_comments_raw(url, max_comments, sort)
 
     # --- Cookies Methods ---
 
@@ -2385,7 +1228,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with video details
         """
-        return self.yt_dlp.get_video_info_with_cookies_from_browser(url, browser)
+        return self._get_info.get_video_info_with_cookies(url, browser)
 
     def get_supported_browsers(self) -> List[str]:
         """
@@ -2394,7 +1237,7 @@ class YouTubeToolkit:
         Returns:
             List of supported browser names
         """
-        return ['chrome', 'firefox', 'safari', 'edge', 'opera', 'brave', 'chromium', 'vivaldi']
+        return self._download.get_supported_browsers()
 
     # --- Subtitles Methods ---
 
@@ -2411,7 +1254,7 @@ class YouTubeToolkit:
         Returns:
             Path to subtitle file
         """
-        return self.yt_dlp.download_captions(url, lang, output_path)
+        return self._download.download_subtitles(url, lang, output_path)
 
     def convert_subtitles(self, input_path: str, output_format: str = 'srt') -> str:
         """
@@ -2424,7 +1267,7 @@ class YouTubeToolkit:
         Returns:
             Path to converted subtitle file
         """
-        return self.yt_dlp.convert_subtitles(input_path, output_format)
+        return self._download.convert_subtitles(input_path, output_format)
 
     def get_supported_subtitle_formats(self) -> List[str]:
         """
@@ -2433,7 +1276,7 @@ class YouTubeToolkit:
         Returns:
             List of supported format names
         """
-        return ['srt', 'vtt', 'ass', 'json3', 'ttml']
+        return self._download.get_supported_subtitle_formats()
 
     # --- Chapters Methods ---
 
@@ -2447,16 +1290,7 @@ class YouTubeToolkit:
         Returns:
             List of chapters with title, start_time, end_time, duration, formatted times
         """
-        # Try pytubefix first
-        try:
-            result = self.pytubefix.get_video_chapters(url)
-            if result:
-                return result
-        except Exception:
-            pass
-
-        # Fallback to yt-dlp
-        return self.yt_dlp.get_chapters(url)
+        return self._get_info.get_chapters(url)
 
     def split_by_chapters(self, url: str, output_path: str = None,
                           format: str = 'mp4') -> List[str]:
@@ -2471,7 +1305,7 @@ class YouTubeToolkit:
         Returns:
             List of paths to split files
         """
-        return self.yt_dlp.split_by_chapters(url, output_path, format)
+        return self._download.split_by_chapters(url, output_path, format)
 
     # --- Thumbnail Methods ---
 
@@ -2488,7 +1322,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded thumbnail file
         """
-        return self.yt_dlp.download_thumbnail(url, output_path, quality)
+        return self._download.download_thumbnail(url, output_path, quality)
 
     def get_thumbnail_url(self, url: str) -> str:
         """
@@ -2500,8 +1334,7 @@ class YouTubeToolkit:
         Returns:
             Thumbnail URL
         """
-        info = self.yt_dlp.get_video_info(url)
-        return info.get('thumbnail_url', '')
+        return self._get_info.get_thumbnail_url(url)
 
     # --- Enhanced Audio Methods ---
 
@@ -2522,7 +1355,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded audio file
         """
-        return self.yt_dlp.download_audio_with_metadata(
+        return self._download.download_audio_with_metadata(
             url, output_path, format, embed_thumbnail, add_metadata
         )
 
@@ -2557,7 +1390,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded file, or None if filtered out
         """
-        return self.yt_dlp.download_with_filter(url, output_path, match_filter, format)
+        return self._download.download_with_filter(url, output_path, match_filter, format)
 
     def get_videos_matching_filter(self, url: str, match_filter: str = None,
                                    max_results: int = None) -> List[Dict[str, Any]]:
@@ -2574,7 +1407,7 @@ class YouTubeToolkit:
         Returns:
             List of video info dictionaries that match the filter
         """
-        return self.yt_dlp.get_videos_matching_filter(url, match_filter, max_results)
+        return self._download.get_videos_matching_filter(url, match_filter, max_results)
 
     def filter_playlist(self, playlist_url: str, match_filter: str = None,
                         date_range: tuple = None,
@@ -2603,7 +1436,7 @@ class YouTubeToolkit:
         Returns:
             List of matching video info dictionaries
         """
-        return self.yt_dlp.filter_playlist(
+        return self._playlist.filter_playlist(
             playlist_url, match_filter, date_range,
             min_views, max_views, min_duration, max_duration,
             title_contains, title_not_contains
@@ -2628,7 +1461,7 @@ class YouTubeToolkit:
         Returns:
             List of paths to downloaded files
         """
-        return self.yt_dlp.batch_download_with_filter(
+        return self._download.batch_download_with_filter(
             url, output_path, match_filter, format, max_downloads, skip_existing
         )
 
@@ -2659,7 +1492,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary mapping file types to their paths
         """
-        return self.yt_dlp.download_with_metadata_files(
+        return self._download.download_with_metadata_files(
             url, output_path, write_info_json, write_description,
             write_thumbnail, write_subtitles, subtitle_langs, format
         )
@@ -2677,7 +1510,7 @@ class YouTubeToolkit:
         Returns:
             Path to the exported metadata file
         """
-        return self.yt_dlp.export_metadata_only(url, output_path, format_type)
+        return self._download.export_metadata_only(url, output_path, format_type)
 
     def get_full_metadata(self, url: str) -> Dict[str, Any]:
         """
@@ -2693,7 +1526,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with comprehensive metadata (50+ fields)
         """
-        return self.yt_dlp.get_full_metadata(url)
+        return self._get_info.get_full_metadata(url)
 
     # --- YouTube Shorts Methods ---
 
@@ -2707,7 +1540,7 @@ class YouTubeToolkit:
         Returns:
             True if the URL is a YouTube Short
         """
-        return self.yt_dlp.is_youtube_short(url)
+        return self._get_info.is_youtube_short(url)
 
     def get_shorts_info(self, url: str) -> Dict[str, Any]:
         """
@@ -2720,7 +1553,7 @@ class YouTubeToolkit:
             Dictionary with Shorts-specific info (id, title, duration, is_short,
             view_count, like_count, uploader, thumbnail, etc.)
         """
-        return self.yt_dlp.get_shorts_info(url)
+        return self._get_info.get_shorts_info(url)
 
     def download_short(self, url: str, output_path: str = None,
                        format: str = 'mp4',
@@ -2737,7 +1570,7 @@ class YouTubeToolkit:
         Returns:
             Path to downloaded Short file
         """
-        return self.yt_dlp.download_short(url, output_path, format, with_audio)
+        return self._download.download_short(url, output_path, format, with_audio)
 
     def get_channel_shorts(self, channel_url: str, max_results: int = 50) -> List[Dict[str, Any]]:
         """
@@ -2750,7 +1583,7 @@ class YouTubeToolkit:
         Returns:
             List of Shorts info dictionaries
         """
-        return self.yt_dlp.get_channel_shorts(channel_url, max_results)
+        return self._channel.get_channel_shorts(channel_url, max_results)
 
     def batch_download_shorts(self, channel_url: str, output_path: str = None,
                               max_downloads: int = 10,
@@ -2767,7 +1600,7 @@ class YouTubeToolkit:
         Returns:
             List of paths to downloaded files
         """
-        return self.yt_dlp.batch_download_shorts(channel_url, output_path, max_downloads, format)
+        return self._download.batch_download_shorts(channel_url, output_path, max_downloads, format)
 
     # ==================== v0.7 ANALYTICAL FEATURES ====================
 
@@ -2788,7 +1621,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with subscription data and pagination info
         """
-        return self.youtube_api.get_channel_subscriptions(channel_id, max_results, order, page_token)
+        return self._channel.get_channel_subscriptions(channel_id, max_results, order, page_token)
 
     def check_subscription(self, channel_id: str, target_channel_id: str) -> Dict[str, Any]:
         """
@@ -2801,7 +1634,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with subscription status and details
         """
-        return self.youtube_api.check_subscription(channel_id, target_channel_id)
+        return self._channel.check_subscription(channel_id, target_channel_id)
 
     # --- Video Categories API ---
 
@@ -2817,7 +1650,7 @@ class YouTubeToolkit:
         Returns:
             List of video category dictionaries with id, title, assignable
         """
-        return self.youtube_api.get_video_categories(region_code, language)
+        return self._search.get_video_categories(region_code, language)
 
     def get_category_by_id(self, category_id: str,
                           language: str = 'en') -> Dict[str, Any]:
@@ -2831,7 +1664,7 @@ class YouTubeToolkit:
         Returns:
             Category dictionary or None if not found
         """
-        return self.youtube_api.get_category_by_id(category_id, language)
+        return self._search.get_category_by_id(category_id, language)
 
     # --- i18n Languages/Regions API ---
 
@@ -2845,7 +1678,7 @@ class YouTubeToolkit:
         Returns:
             List of supported language dictionaries with code and name
         """
-        return self.youtube_api.get_supported_languages(language)
+        return self._system.get_supported_languages(language)
 
     def get_supported_regions(self, language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -2857,7 +1690,7 @@ class YouTubeToolkit:
         Returns:
             List of supported region dictionaries with code and name
         """
-        return self.youtube_api.get_supported_regions(language)
+        return self._system.get_supported_regions(language)
 
     # --- Activities API ---
 
@@ -2883,7 +1716,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with activities and pagination info
         """
-        return self.youtube_api.get_channel_activities(
+        return self._channel.get_channel_activities(
             channel_id, max_results, published_after, published_before, region_code, page_token
         )
 
@@ -2898,7 +1731,7 @@ class YouTubeToolkit:
         Returns:
             List of recent upload dictionaries with video_id, title, url, etc.
         """
-        return self.youtube_api.get_recent_uploads(channel_id, max_results)
+        return self._channel.get_recent_uploads(channel_id, max_results)
 
     # --- Trending/Popular Videos API ---
 
@@ -2918,7 +1751,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary with trending videos and pagination info
         """
-        return self.youtube_api.get_trending_videos(region_code, category_id, max_results, page_token)
+        return self._search.get_trending_videos(region_code, category_id, max_results, page_token)
 
     def get_trending_by_category(self, region_code: str = 'US',
                                  language: str = 'en') -> Dict[str, List[Dict[str, Any]]]:
@@ -2932,7 +1765,7 @@ class YouTubeToolkit:
         Returns:
             Dictionary mapping category names to lists of trending videos
         """
-        return self.youtube_api.get_trending_by_category(region_code, language)
+        return self._search.get_trending_by_category(region_code, language)
 
     # --- Channel Sections API ---
 
@@ -2950,7 +1783,7 @@ class YouTubeToolkit:
         Returns:
             List of channel section dictionaries
         """
-        return self.youtube_api.get_channel_sections(channel_id, language)
+        return self._channel.get_channel_sections(channel_id, language)
 
     def get_channel_featured_channels(self, channel_id: str) -> List[Dict[str, Any]]:
         """
@@ -2962,7 +1795,7 @@ class YouTubeToolkit:
         Returns:
             List of featured channel IDs
         """
-        return self.youtube_api.get_channel_featured_channels(channel_id)
+        return self._channel.get_channel_featured_channels(channel_id)
 
     # --- Enhanced Channel Info ---
 
@@ -2983,7 +1816,7 @@ class YouTubeToolkit:
             Dictionary with comprehensive channel info including statistics,
             branding, topics, related playlists, and status
         """
-        return self.youtube_api.get_channel_info(channel_id, username, handle)
+        return self._channel.get_channel_info_full(channel_id, username, handle)
 
     def get_multiple_channels(self, channel_ids: List[str]) -> List[Dict[str, Any]]:
         """
@@ -2995,4 +1828,4 @@ class YouTubeToolkit:
         Returns:
             List of channel info dictionaries
         """
-        return self.youtube_api.get_multiple_channels(channel_ids)
+        return self._channel.get_multiple_channels(channel_ids)
