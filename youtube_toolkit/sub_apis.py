@@ -215,7 +215,7 @@ class PlaylistGetAPI:
         Returns:
             List of video URLs
         """
-        return self._toolkit.get_playlist_urls_pytubefix(url)
+        return self._toolkit._get_playlist_urls_pytubefix(url)
 
     def videos(self, url: str,
                limit: Optional[int] = None,
@@ -288,7 +288,7 @@ class CommentsGetAPI:
         Returns:
             List of reply dicts
         """
-        return self._toolkit.fetch_comment_replies(
+        return self._toolkit._fetch_comment_replies(
             self._toolkit.extract_video_id(url),
             comment_id,
             max_results=limit
@@ -375,7 +375,7 @@ class GetAPI:
             VideoInfo dataclass with video details
         """
         # Get base info from handler
-        info = self._toolkit.get_video_info_pytubefix(url)
+        info = self._toolkit._get_video_info_pytubefix(url)
 
         # Map handler dict keys to VideoInfo fields
         video_info = VideoInfo(
@@ -413,13 +413,13 @@ class GetAPI:
 
             if 'transcript' in include:
                 try:
-                    video_info.transcript = self._toolkit.get_transcript(url)
+                    video_info.transcript = self._toolkit._get_transcript(url)
                 except Exception:
                     video_info.transcript = None
 
             if 'lyrics' in include:
                 try:
-                    video_info.lyrics = self._toolkit.get_lyrics(url)
+                    video_info.lyrics = self._toolkit._get_lyrics(url)
                 except Exception:
                     video_info.lyrics = None
 
@@ -472,7 +472,7 @@ class GetAPI:
         Returns:
             Transcript text or None
         """
-        return self._toolkit.get_transcript(url)
+        return self._toolkit._get_transcript(url)
 
     def lyrics(self, url: str) -> Optional[str]:
         """
@@ -484,7 +484,7 @@ class GetAPI:
         Returns:
             Lyrics text or None
         """
-        return self._toolkit.get_lyrics(url)
+        return self._toolkit._get_lyrics(url)
 
     def captions(self, url: str) -> Dict[str, Any]:
         """
@@ -520,7 +520,7 @@ class GetAPI:
         Returns:
             List of keywords/tags
         """
-        info = self._toolkit.get_video_info_pytubefix(url)
+        info = self._toolkit._get_video_info_pytubefix(url)
         return info.get('keywords', []) or []
 
     def formats(self, url: str) -> Dict[str, Any]:
@@ -533,7 +533,7 @@ class GetAPI:
         Returns:
             Dict with audio and video format options
         """
-        return self._toolkit.get_available_formats_pytubefix(url)
+        return self._toolkit._get_available_formats_pytubefix(url)
 
     def restriction(self, url: str) -> Dict[str, Any]:
         """
@@ -965,8 +965,8 @@ class DownloadAPI:
             Path to downloaded file
         """
         # Extract cookies and use them for download
-        cookies_file = self._toolkit.extract_cookies_from_browser(browser)
-        return self._toolkit.download_video_with_cookies(
+        cookies_file = self._toolkit._extract_cookies_from_browser(browser)
+        return self._toolkit._download_video_with_cookies(
             url, output_path=output_path, cookies=cookies_file
         )
 
@@ -1125,11 +1125,11 @@ class SearchAPI:
             List of video results
         """
         if use_api:
-            return self._toolkit.search_videos_api(query, limit)
+            return self._toolkit._search_videos_api(query, limit)
 
         # Try pytubefix first, then scrapetube
         try:
-            results = self._toolkit.search_videos_pytubefix(query, limit)
+            results = self._toolkit._search_videos_pytubefix(query, limit)
             if results:
                 return results
         except Exception:
@@ -1157,7 +1157,7 @@ class SearchAPI:
         Returns:
             List of channel results
         """
-        results = self._toolkit.advanced_search_native(
+        results = self._toolkit._advanced_search_native(
             query, result_type='channel', limit=limit
         )
         return results.get('channels', [])
@@ -1174,7 +1174,7 @@ class SearchAPI:
         Returns:
             List of playlist results
         """
-        results = self._toolkit.advanced_search_native(
+        results = self._toolkit._advanced_search_native(
             query, result_type='playlist', limit=limit
         )
         return results.get('playlists', [])
@@ -1221,7 +1221,7 @@ class SearchAPI:
         Returns:
             List of suggested queries
         """
-        return self._toolkit.get_search_suggestions(query)
+        return self._toolkit._get_search_suggestions(query)
 
     @property
     def trending(self) -> 'TrendingSearchAPI':
@@ -1463,7 +1463,7 @@ class AnalyzeAPI:
         Returns:
             Dict with filesize info for best audio/video streams
         """
-        return self._toolkit.get_filesize_preview(url)
+        return self._toolkit._get_filesize_preview(url)
 
 
 # =============================================================================
@@ -1545,7 +1545,7 @@ class StreamAPI:
         Returns:
             Bytes containing the stream data
         """
-        return self._toolkit.stream_to_buffer(url, stream_type, quality)
+        return self._toolkit._stream_to_buffer(url, stream_type, quality)
 
     def audio(self, url: str, quality: str = 'best') -> bytes:
         """
@@ -1558,7 +1558,7 @@ class StreamAPI:
         Returns:
             Bytes containing the audio data
         """
-        return self._toolkit.stream_to_buffer(url, 'audio', quality)
+        return self._toolkit._stream_to_buffer(url, 'audio', quality)
 
     def video(self, url: str, quality: str = 'best') -> bytes:
         """
@@ -1571,5 +1571,5 @@ class StreamAPI:
         Returns:
             Bytes containing the video data
         """
-        return self._toolkit.stream_to_buffer(url, 'video', quality)
+        return self._toolkit._stream_to_buffer(url, 'video', quality)
 

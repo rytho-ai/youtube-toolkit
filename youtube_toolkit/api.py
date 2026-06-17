@@ -1905,62 +1905,62 @@ class YouTubeToolkit:
     # the facade's behavior unchanged. Not part of the public contract.
     # =========================================================================
 
-    def get_video_info_pytubefix(self, url: str) -> Dict[str, Any]:
+    def _get_video_info_pytubefix(self, url: str) -> Dict[str, Any]:
         """Get raw video info from pytubefix only (no fallback)."""
         return self._get_info.get_video_info_pytubefix(url)
 
-    def get_available_formats_pytubefix(self, url: str) -> Dict[str, Any]:
+    def _get_available_formats_pytubefix(self, url: str) -> Dict[str, Any]:
         """Get available formats from pytubefix only (no fallback)."""
         return self._get_info.get_available_formats_pytubefix(url)
 
-    def get_transcript(self, url: str) -> Any:
+    def _get_transcript(self, url: str) -> Any:
         """Get auto-generated transcript via yt-dlp."""
         return self._get_info.get_transcript(url)
 
-    def get_lyrics(self, url: str) -> Any:
+    def _get_lyrics(self, url: str) -> Any:
         """Get lyrics via yt-dlp."""
         return self._get_info.get_lyrics(url)
 
-    def get_playlist_urls_pytubefix(self, url: str) -> List[str]:
+    def _get_playlist_urls_pytubefix(self, url: str) -> List[str]:
         """Get playlist video URLs from pytubefix only (no fallback)."""
         return self._playlist.get_playlist_urls_pytubefix(url)
 
-    def fetch_comment_replies(self, video_id: str, comment_id: str,
+    def _fetch_comment_replies(self, video_id: str, comment_id: str,
                               max_results: int = 50) -> List[Dict[str, Any]]:
         """Fetch replies to a comment via the YouTube API handler."""
         return self._comments.fetch_replies(video_id, comment_id, max_results=max_results)
 
-    def extract_cookies_from_browser(self, browser: str = 'chrome') -> str:
+    def _extract_cookies_from_browser(self, browser: str = 'chrome') -> str:
         """Extract browser cookies to a file via yt-dlp."""
         return self._download.extract_cookies_from_browser(browser)
 
-    def download_video_with_cookies(self, url: str, output_path: str = None,
+    def _download_video_with_cookies(self, url: str, output_path: str = None,
                                     cookies: str = None) -> str:
         """Download a video via yt-dlp using a cookies file."""
         return self._download.download_video_with_cookies(url, output_path=output_path, cookies=cookies)
 
-    def stream_to_buffer(self, url: str, stream_type: str = 'audio',
+    def _stream_to_buffer(self, url: str, stream_type: str = 'audio',
                          quality: str = 'best') -> bytes:
         """Stream content to an in-memory buffer via pytubefix."""
         return self._download.stream_to_buffer(url, stream_type, quality)
 
-    def get_filesize_preview(self, url: str) -> Dict[str, Any]:
+    def _get_filesize_preview(self, url: str) -> Dict[str, Any]:
         """Get filesize preview for streams via pytubefix (no download)."""
         return self._download.get_filesize_preview(url)
 
-    def search_videos_api(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def _search_videos_api(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Search videos via the YouTube API handler only."""
         return self._search.search_videos_api(query, limit)
 
-    def search_videos_pytubefix(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def _search_videos_pytubefix(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Search videos via pytubefix only."""
         return self._search.search_videos_pytubefix(query, limit)
 
-    def advanced_search_native(self, query: str, result_type: str = 'video',
+    def _advanced_search_native(self, query: str, result_type: str = 'video',
                                limit: int = 20) -> Dict[str, Any]:
         """Run pytubefix native advanced search for a single result type."""
         return self._search.advanced_search_native(query, result_type=result_type, limit=limit)
 
-    def get_search_suggestions(self, query: str) -> List[str]:
+    def _get_search_suggestions(self, query: str) -> List[str]:
         """Get search autocomplete suggestions via pytubefix."""
         return self._search.get_search_suggestions(query)
