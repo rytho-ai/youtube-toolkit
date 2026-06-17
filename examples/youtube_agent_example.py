@@ -72,15 +72,17 @@ class SimpleYouTubeAgent:
     def _get_video_metadata(self, url: str) -> Dict[str, Any]:
         """Get video metadata."""
         try:
-            info = self.toolkit.get_video_info(url)
+            # get.video(url) returns a VideoInfo dataclass (attribute access)
+            info = self.toolkit.get.video(url)
+            description = info.description or ''
             return {
-                'title': info.get('title', 'Unknown'),
-                'description': info.get('description', '')[:200] + '...' if len(info.get('description', '')) > 200 else info.get('description', ''),
-                'channel': info.get('channel_title', 'Unknown'),
-                'views': info.get('view_count', 0),
-                'likes': info.get('like_count', 0),
-                'duration': info.get('duration', 0),
-                'published': info.get('published_at', 'Unknown')
+                'title': info.title or 'Unknown',
+                'description': description[:200] + '...' if len(description) > 200 else description,
+                'channel': info.author or 'Unknown',
+                'views': info.views or 0,
+                'likes': info.like_count or 0,
+                'duration': info.duration or 0,
+                'published': info.published_date or 'Unknown'
             }
         except Exception as e:
             return {'error': str(e)}
@@ -88,35 +90,34 @@ class SimpleYouTubeAgent:
     def _get_captions(self, url: str) -> Dict[str, Any]:
         """Get video captions with analysis."""
         try:
-            # List available captions
-            caption_list = self.toolkit.list_captions(url)
-            available_languages = [track['language'] for track in caption_list.get('tracks', [])]
-            
-            # Download English captions
-            result = self.toolkit.advanced_download_captions(
-                url, 
-                language_code='en', 
-                format='srt'
-            )
-            
-            if result['success']:
-                return {
-                    'status': 'success',
-                    'available_languages': available_languages,
-                    'downloaded_language': 'en',
-                    'file_path': result['output_path'],
-                    'analysis': result['analysis'],
-                    'word_count': result['analysis'].get('word_count', 0),
-                    'duration': result['analysis'].get('total_duration', 0),
-                    'cue_count': result['analysis'].get('cue_count', 0)
-                }
-            else:
-                return {
-                    'status': 'failed',
-                    'error': result.get('error', 'Unknown error'),
-                    'available_languages': available_languages
-                }
-                
+            # List available captions -> get.captions returns a CaptionResult
+            caption_result = self.toolkit.get.captions(url)
+            available_languages = [track.language for track in caption_result.tracks]
+
+            # Download English captions to disk. NOTE: advanced_download_captions
+            # (which returned an analysis payload) was removed in 2.0;
+            # download.captions returns the output file path, and we derive the
+            # word count locally from the downloaded file.
+            from youtube_toolkit import CaptionFormatConverter
+
+            file_path = self.toolkit.download.captions(url, lang='en', format='srt')
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                cues = CaptionFormatConverter.parse_srt(f.read())
+
+            word_count = sum(len(cue.text.split()) for cue in cues)
+            total_duration = max((cue.end_time for cue in cues), default=0)
+
+            return {
+                'status': 'success',
+                'available_languages': available_languages,
+                'downloaded_language': 'en',
+                'file_path': file_path,
+                'word_count': word_count,
+                'duration': total_duration,
+                'cue_count': len(cues)
+            }
+
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
     
@@ -130,21 +131,22 @@ class SimpleYouTubeAgent:
             if not title or title == 'Unknown':
                 return []
             
-            # Search for similar content
-            results = self.toolkit.search_videos(title, max_results=max_results)
-            
+            # Search for similar content. search.videos returns a list of dicts
+            # with keys: title, author, views, length, watch_url, publish_date.
+            results = self.toolkit.search.videos(title, limit=max_results)
+
             # Format results
             similar_videos = []
             for video in results:
                 similar_videos.append({
                     'title': video.get('title', 'Unknown'),
-                    'channel': video.get('channel_title', 'Unknown'),
-                    'views': video.get('view_count', 0),
-                    'duration': video.get('duration', 0),
-                    'url': video.get('url', ''),
-                    'published': video.get('published_at', 'Unknown')
+                    'channel': video.get('author', 'Unknown'),
+                    'views': video.get('views', 0),
+                    'duration': video.get('length', 0),
+                    'url': video.get('watch_url', ''),
+                    'published': video.get('publish_date', 'Unknown')
                 })
-            
+
             return similar_videos
             
         except Exception as e:
@@ -239,21 +241,23 @@ class SimpleYouTubeAgent:
             print(f"\n📥 Downloading {content_type} from: {url}")
         
         try:
+            # download.video / download.audio return the output file path (str)
             if content_type == 'video':
-                result = self.toolkit.download_video(url, quality='best')
+                file_path = self.toolkit.download.video(url, quality='best')
             elif content_type == 'audio':
-                result = self.toolkit.download_audio(url, format=format)
+                file_path = self.toolkit.download.audio(url, format=format)
             else:
                 return {'status': 'error', 'error': 'Invalid content type. Use "video" or "audio"'}
-            
+
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 'Unknown'
             return {
                 'status': 'success',
                 'content_type': content_type,
                 'format': format,
-                'file_path': result.get('file_path', 'Unknown'),
-                'file_size': result.get('file_size', 'Unknown')
+                'file_path': file_path,
+                'file_size': file_size
             }
-            
+
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
     
@@ -263,15 +267,15 @@ class SimpleYouTubeAgent:
             print(f"\n🔍 Searching for: {query}")
         
         try:
-            # Search for videos
-            results = self.toolkit.search_videos(query, max_results=max_results)
-            
+            # Search for videos (search.videos returns list of dicts)
+            results = self.toolkit.search.videos(query, limit=max_results)
+
             if not results:
                 return {'status': 'error', 'error': 'No videos found'}
-            
+
             # Analyze the first result
             top_video = results[0]
-            video_url = top_video.get('url', '')
+            video_url = top_video.get('watch_url', '')
             
             if not video_url:
                 return {'status': 'error', 'error': 'No valid URL found'}

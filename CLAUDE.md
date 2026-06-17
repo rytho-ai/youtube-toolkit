@@ -4,27 +4,31 @@ This document contains development principles and architecture guidelines for Cl
 
 ## Architecture Principles
 
-### Four-Layer Architecture
+### Three-Layer Architecture
 
-The youtube-toolkit follows a strict layered architecture. `api.py` is the
-public contract (a thin delegation layer); the business logic lives in
-`services/`; `handlers/` are the swappable backends.
+The youtube-toolkit follows a strict layered architecture. `sub_apis.py` is the
+**only public surface** (5 action facades); the business logic + handler fallback
+live in `services/`; `handlers/` are the swappable backends. `api.py`
+(`YouTubeToolkit`) is the **composition root**: its `__init__` wires handlers +
+services + sub-APIs together, and it keeps just two bare helpers.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   sub_apis.py                                │
+│                   sub_apis.py  (the public surface)         │
 │   Action facades: toolkit.get / download / search /         │
 │   analyze / stream (GetAPI, DownloadAPI, ...).              │
-│   Call api.py methods ONLY — never handlers directly.       │
+│   Call the matching SERVICE directly (self._toolkit._<svc>),│
+│   never handlers.                                            │
 └─────────────────────────────────────────────────────────────┘
-                              │  (also: direct toolkit.method() calls)
+                              │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 api.py (YouTubeToolkit)                      │
-│   THE PUBLIC CONTRACT + thin delegation layer.             │
-│   Each public method delegates one-line to a service.      │
-│   Owns handlers + anti-detection + the 5 sub-APIs.         │
-│   Method signatures are FROZEN (other projects import them).│
+│                 api.py (YouTubeToolkit) = COMPOSITION ROOT   │
+│   __init__ builds handlers + anti-detection, the 9 domain   │
+│   services, and the 5 sub-APIs — that's its whole job.      │
+│   Only two methods stay on it: extract_video_id and the     │
+│   shared helper _sanitize_filename. It is NOT a delegation  │
+│   layer — the ~100 legacy flat methods were REMOVED in 2.0. │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -32,7 +36,7 @@ public contract (a thin delegation layer); the business logic lives in
 │                   services/*.py                             │
 │   Business logic per domain (get_info, channel, playlist,  │
 │   download, search, analyze, comments, captions, system).  │
-│   Hold the handler-fallback orchestration. Each takes a    │
+│   Own the handler-fallback orchestration. Each takes a     │
 │   toolkit back-ref (self._toolkit), like sub_apis.         │
 │   Fallback primitive lives in core/fallback.py.            │
 └─────────────────────────────────────────────────────────────┘
@@ -47,14 +51,21 @@ public contract (a thin delegation layer); the business logic lives in
 
 ### CRITICAL: Layer Communication Rules
 
-**Rule 1 — Sub-APIs MUST call api.py methods, NOT handlers directly.**
-(Executable guard: `grep -E '_toolkit\.(pytubefix|ytdlp|yt_dlp|youtube_api)\.' youtube_toolkit/sub_apis.py` must return **0**.)
+**Rule 1 — Sub-APIs call the matching SERVICE directly, NOT handlers.**
+A sub-API method body calls `self._toolkit._<svc>.<method>(...)` (e.g.
+`self._toolkit._get_info.get_video_info_pytubefix(url)`). It never reaches into a
+handler. (Executable guard: `grep -E '_toolkit\.(pytubefix|ytdlp|yt_dlp|youtube_api)\.' youtube_toolkit/sub_apis.py`
+must return **0**.)
 
-**Rule 2 — api.py methods delegate to a service, NOT to handlers directly.**
-api.py is the public contract; the body of each method should be a one-line
-delegation to `self._<domain>.<method>(...)`. Handler calls + fallback live in
-the service (using `core/fallback.run_with_fallback`). The only retained
-exception is the shared util `extract_video_id`.
+**Rule 2 — Services own the handler-fallback.**
+A service is where handlers actually get called and where fallback is decided,
+using `core/fallback.run_with_fallback`. Services hold a toolkit back-ref so they
+can reach the handlers (`self._toolkit.pytubefix`, `self._toolkit.yt_dlp`, ...).
+
+**Rule 3 — api.py is a composition root, not a method layer.**
+Do NOT add delegation methods to `api.py`. Its body is `__init__` (wiring) plus
+the two retained helpers `extract_video_id` and `_sanitize_filename`. New
+capabilities are exposed on a sub-API, not on `YouTubeToolkit`.
 
 ```python
 # ❌ WRONG - Sub-API calling handler directly
@@ -62,34 +73,26 @@ class SponsorBlockAPI:
     def segments(self, url: str):
         return self._toolkit.yt_dlp.get_sponsorblock_segments(url)  # BAD!
 
-# ✅ CORRECT - Sub-API -> api.py -> service -> handler
+# ✅ CORRECT - Sub-API -> service -> handler (service owns fallback)
 class AnalyzeAPI:
     def sponsorblock(self, url: str):
-        return self._toolkit.get_sponsorblock_segments(url)  # GOOD!
+        return self._toolkit._analyze.get_sponsorblock_segments(url)  # GOOD!
 ```
 
 **Why this matters:**
 1. **Fallback Logic**: services implement fallback between handlers (one owner: `core/fallback.py`)
-2. **Cross-cutting Concerns**: Logging, caching, rate limiting sit at api/service level
-3. **Consistency**: Single point of control for each feature; api.py is the stable contract
-4. **Testability**: Easier to mock at api.py level
+2. **Cross-cutting Concerns**: Logging, caching, rate limiting sit at the service level
+3. **Consistency**: Single point of control for each feature, inside the service
+4. **Testability**: Mock at the handler (or service) level
 
-### Public API: the sub-APIs are canonical; flat methods are legacy
+### Public API: the 5 sub-APIs (flat methods removed in 2.0)
 
-The five sub-APIs (`get` / `download` / `search` / `analyze` / `stream`) are THE
-recommended public API. The ~100 flat `YouTubeToolkit` methods
-(`get_video_info()`, `download_audio()`, …) remain for backward compatibility but
-are **legacy**: each clear duplicate carries `@deprecated("toolkit.x.y()")` from
-`utils/deprecation.py`, which emits a `DeprecationWarning` **only when called from
-outside the `youtube_toolkit` package**. This means internal callers (the
-sub-APIs and the services, which still route cross-domain calls through these
-methods) never self-warn, while external users get a runtime nudge. When adding a
-new capability, expose it on a sub-API; only add a flat method if a legacy-style
-entry point is genuinely needed, and decorate it if it duplicates a sub-API.
-
-The 14 internal plumbing delegators that sub_apis needs (e.g.
-`_get_video_info_pytubefix`, `_stream_to_buffer`) are `_`-prefixed private — keep
-new internal-only delegators private too, so the public surface stays small.
+The public API is **exactly** the five sub-APIs — `get` / `download` / `search` /
+`analyze` / `stream` (plus `toolkit.extract_video_id`). There are no flat methods:
+the ~100 historical `YouTubeToolkit` flat methods (`get_video_info()`,
+`download_audio()`, …) were **removed in 2.0** (a breaking change). Anyone
+migrating off them should consult the root `MIGRATION.md` for the
+flat-method → sub-API mapping.
 
 ### Parallel / async downloads (conservative by design)
 
@@ -103,7 +106,7 @@ fragment param lands in the yt-dlp handler; async methods are thin
 
 ### Adding New Features
 
-When adding a new feature, follow this pattern:
+When adding a new feature, follow this three-step pattern (no api.py step):
 
 1. **Handler Layer** (`handlers/*.py`): Implement the raw functionality
    ```python
@@ -126,28 +129,22 @@ When adding a new feature, follow this pattern:
        )
    ```
 
-3. **API Layer** (`api.py`): Add a one-line delegation (the public contract)
-   ```python
-   # api.py
-   def get_new_feature(self, url: str) -> Dict:
-       return self._get_info.get_new_feature(url)
-   ```
-
-4. **Sub-API Layer** (`sub_apis.py`): Add user-friendly interface
+3. **Sub-API Layer** (`sub_apis.py`): Expose it, calling the service directly
    ```python
    # sub_apis.py
-   class NewFeatureAPI:
-       def get(self, url: str) -> Dict:
-           return self._toolkit.get_new_feature(url)  # Calls api.py, never the handler!
+   class GetAPI:
+       def new_feature(self, url: str) -> Dict:
+           return self._toolkit._get_info.get_new_feature(url)  # service, never the handler!
    ```
 
-5. **Initialize in api.py** (services are wired in `__init__` before sub-APIs)
-   ```python
-   # api.py __init__
-   self._get_info = GetInfoService(self)   # service
-   from .sub_apis import NewFeatureAPI
-   self.new_feature = NewFeatureAPI(self)  # sub-API
-   ```
+If the feature warrants an **entirely new** service or sub-API, wire it once in
+the `api.py` composition root (`__init__`):
+```python
+# api.py __init__
+self._get_info = GetInfoService(self)   # service (already exists for this domain)
+self.get = GetAPI(self)                 # sub-API
+```
+This is the only thing api.py does — it never grows a delegation method.
 
 ## Code Organization
 
@@ -155,8 +152,8 @@ When adding a new feature, follow this pattern:
 
 ```
 youtube_toolkit/
-├── api.py                 # Public contract: YouTubeToolkit, thin delegation layer
-├── sub_apis.py            # Action facades (GetAPI, DownloadAPI, ...) -> call api.py
+├── api.py                 # Composition root: YouTubeToolkit.__init__ wires it all
+├── sub_apis.py            # Action facades (GetAPI, DownloadAPI, ...) -> call services
 ├── services/              # Business logic per domain (the api.py bodies live here)
 │   ├── get_info.py        #   GetInfoService, ChannelService, PlaylistService,
 │   ├── channel.py         #   DownloadService, SearchService, AnalyzeService,
@@ -181,7 +178,7 @@ youtube_toolkit/
 
 ### Naming Conventions
 
-- **api.py methods**: Use descriptive names like `get_video_info()`, `download_audio()`
+- **services/ methods**: Use descriptive names like `get_video_info()`, `download_audio()`
 - **services/ classes**: Use `*Service` suffix like `GetInfoService`, `DownloadService`
 - **sub_apis.py classes**: Use `*API` suffix like `GetAPI`, `DownloadAPI`, `SponsorBlockAPI`
 - **handlers**: Use `*Handler` suffix like `YTDLPHandler`, `PyTubeFixHandler`
@@ -198,9 +195,11 @@ youtube_toolkit/
 - **v0.3**: Added channel support, chapters, advanced search
 - **v0.4**: Added Action-Based API (get, download, search sub-APIs)
 - **v0.5**: Added advanced yt-dlp features (SponsorBlock, live streams, engagement data, etc.)
-- **v1.0**: Deep-module refactor — api.py god class decomposed into `services/`
-  (api.py becomes a thin delegation layer / public contract); fallback extracted
-  to `core/fallback.py`; `captions.py` split into `core/captions/`; sub_apis
-  routed through api.py (no handler-direct calls). Added opt-in parallel +
-  async downloads (`download_many`, `concurrent_fragments`, `*_async`).
-  Public API contract unchanged.
+- **v1.0**: Deep-module refactor — api.py god class decomposed into `services/`;
+  fallback extracted to `core/fallback.py`; `captions.py` split into
+  `core/captions/`. Added opt-in parallel + async downloads (`download_many`,
+  `concurrent_fragments`, `*_async`).
+- **v2.0**: **Breaking change** — all ~100 flat `YouTubeToolkit` methods removed;
+  api.py is now a pure composition root (`__init__` wiring + `extract_video_id` +
+  `_sanitize_filename`). The public API is exactly the 5 sub-APIs, which now call
+  their services directly. See `MIGRATION.md` for the flat-method → sub-API map.

@@ -56,34 +56,32 @@ toolkit = YouTubeToolkit(verbose=True)
 
 # Analyze a video
 url = "https://www.youtube.com/watch?v=VIDEO_ID"
-info = toolkit.get_video_info(url)
-captions = toolkit.advanced_download_captions(url, 'en', 'srt')
+info = toolkit.get.video(url)               # returns a VideoInfo dataclass
+caption_path = toolkit.download.captions(url, lang='en', format='srt')
 
-print(f"Title: {info['title']}")
-print(f"Captions: {'Available' if captions['success'] else 'Not available'}")
+print(f"Title: {info.title}")
+print(f"Captions saved to: {caption_path}")
 ```
 
 ### Search Videos
 ```python
-# Search for videos
-results = toolkit.search_videos("python tutorial", max_results=10)
+# Search for videos (returns a list of dicts)
+results = toolkit.search.videos("python tutorial", limit=10)
 
 for video in results:
     print(f"Title: {video['title']}")
-    print(f"Channel: {video['channel_title']}")
-    print(f"Views: {video['view_count']}")
+    print(f"Channel: {video['author']}")
+    print(f"Views: {video['views']}")
     print("---")
 ```
 
 ### Download Content
 ```python
-# Download audio
-audio_result = toolkit.download_audio(url, format='mp3')
+# Download audio / video -> each returns the output file path (str)
+audio_path = toolkit.download.audio(url, format='mp3')
+video_path = toolkit.download.video(url, quality='best')
 
-# Download video
-video_result = toolkit.download_video(url, quality='best')
-
-print(f"Downloaded: {audio_result['file_path']}")
+print(f"Downloaded: {audio_path}")
 ```
 
 ## Building Your Own Agent
@@ -95,18 +93,18 @@ class MyYouTubeAgent:
         self.toolkit = YouTubeToolkit()
     
     def process_video(self, url: str):
-        # Get metadata
-        info = self.toolkit.get_video_info(url)
-        
-        # Get captions
-        captions = self.toolkit.advanced_download_captions(url, 'en', 'srt')
-        
+        # Get metadata (VideoInfo dataclass)
+        info = self.toolkit.get.video(url)
+
+        # Get captions (saved to disk; returns the file path)
+        caption_path = self.toolkit.download.captions(url, lang='en', format='srt')
+
         # Analyze content
-        analysis = self.analyze_content(info, captions)
-        
+        analysis = self.analyze_content(info, caption_path)
+
         return {
             'metadata': info,
-            'captions': captions,
+            'captions': caption_path,
             'analysis': analysis
         }
 ```
@@ -115,7 +113,7 @@ class MyYouTubeAgent:
 ```python
 def robust_video_processing(self, url: str):
     try:
-        result = self.toolkit.get_video_info(url)
+        result = self.toolkit.get.video(url)
         return {'status': 'success', 'data': result}
     except Exception as e:
         return {'status': 'error', 'error': str(e)}
@@ -145,7 +143,7 @@ def rate_limit(calls_per_minute=60):
 
 @rate_limit(calls_per_minute=30)
 def search_videos(self, query: str):
-    return self.toolkit.search_videos(query)
+    return self.toolkit.search.videos(query)
 ```
 
 ## Best Practices
@@ -153,34 +151,23 @@ def search_videos(self, query: str):
 ### 1. Always Handle Errors
 ```python
 try:
-    result = toolkit.advanced_download_captions(url, 'en', 'srt')
-    if result['success']:
-        # Process successful result
-        pass
-    else:
-        # Handle failure case
-        print(f"Caption download failed: {result['error']}")
+    # download.captions returns the output file path (str), or raises on failure
+    caption_path = toolkit.download.captions(url, lang='en', format='srt')
+    print(f"Captions saved to: {caption_path}")
 except Exception as e:
-    print(f"Unexpected error: {e}")
+    print(f"Caption download failed: {e}")
 ```
 
 ### 2. Use Fallback Mechanisms
 ```python
 def get_captions_with_fallback(self, url: str):
-    try:
-        # Try YouTube API first
-        result = toolkit.advanced_download_captions(url, 'en', 'srt')
-        if result['success']:
-            return result
-    except Exception:
-        pass
-    
-    try:
-        # Fallback to yt-dlp
-        result = toolkit.yt_dlp.download_captions(url, 'en')
-        return {'success': True, 'output_path': result}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+    for fmt in ('srt', 'vtt'):
+        try:
+            path = toolkit.download.captions(url, lang='en', format=fmt)
+            return {'success': True, 'output_path': path}
+        except Exception:
+            continue
+    return {'success': False, 'error': 'no captions available'}
 ```
 
 ### 3. Cache Results

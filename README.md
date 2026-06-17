@@ -45,7 +45,7 @@ uv pip install git+https://github.com/rhythmculture/youtube-toolkit.git
 pip install git+https://github.com/rhythmculture/youtube-toolkit.git
 
 # Specific version
-uv pip install git+https://github.com/rhythmculture/youtube-toolkit.git@v1.0.0
+uv pip install git+https://github.com/rhythmculture/youtube-toolkit.git@v2.0.0
 ```
 
 ### YouTube API Key (Optional)
@@ -87,10 +87,10 @@ for item in results.items:
 ## The 5 Core APIs
 
 > **These five sub-APIs (`get` / `download` / `search` / `analyze` / `stream`) are the
-> recommended public API.** The older flat methods (`toolkit.get_video_info()`,
-> `toolkit.download_audio()`, …) still work for backward compatibility but are
-> **legacy**: calling one directly emits a `DeprecationWarning` pointing at its
-> sub-API replacement. New code should use the sub-APIs below.
+> only public API.** The older flat methods (`toolkit.get_video_info()`,
+> `toolkit.download_audio()`, …) were **removed in v2.0** (a breaking change).
+> If you're upgrading, see [MIGRATION.md](MIGRATION.md) for the
+> flat-method → sub-API mapping.
 
 ### GET - Retrieve Information
 
@@ -161,24 +161,53 @@ is_live = toolkit.stream.live.is_live(url)
 status = toolkit.stream.live.status(url)
 ```
 
+## Return Types (Dataclasses)
+
+The three primary entry points return typed dataclasses (attribute access, IDE
+autocomplete), not raw dicts:
+
+```python
+video = toolkit.get(url)        # VideoInfo
+print(video.title, video.duration, video.views, video.author, video.video_id, video.url)
+
+result = toolkit.download(url)   # DownloadResult
+if result.success:
+    print(result.file_path, result.file_size)
+else:
+    print(result.error_message)
+
+results = toolkit.search(q)      # SearchResult
+print(results.query, results.total_results)
+for item in results.items:       # items: list[SearchResultItem]
+    print(item.title)
+```
+
+- `toolkit.get(url)` → **`VideoInfo`** (`.title` / `.duration` / `.views` / `.author` / `.video_id` / `.url` …)
+- `toolkit.download(url)` → **`DownloadResult`** (`.success` / `.file_path` / `.error_message` / `.file_size`)
+- `toolkit.search(q)` → **`SearchResult`** (`.items` is a list of `SearchResultItem`, plus `.total_results` / `.query`)
+
+> Note: some sub-methods (e.g. `toolkit.get.channel.videos()`, `toolkit.get.playlist.urls()`)
+> currently return plain `dict` / `list` rather than dataclasses.
+
 ## Documentation
 
-- **[Usage Guide](docs/USAGE.md)** - Comprehensive usage examples
-- **[Architecture](docs/ARCHITECTURE.md)** - Design philosophy and decisions
-- **[Extending](docs/EXTENDING.md)** - How to add new features
+- **[CLAUDE.md](CLAUDE.md)** - Architecture & extending guide (layering, adding features)
+- **[examples/](examples/)** - Runnable examples
+- **[MIGRATION.md](MIGRATION.md)** - v1 → v2 migration
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Sub-API Layer                          │
+│                Sub-API Layer (public surface)              │
 │     GetAPI │ DownloadAPI │ SearchAPI │ AnalyzeAPI │ StreamAPI│
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    YouTubeToolkit                           │
-│            Fallback logic, unified interface                │
+│                      Service Layer                          │
+│        Business logic + handler-fallback per domain        │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -186,6 +215,8 @@ status = toolkit.stream.live.status(url)
 │                      Handlers                               │
 │   PyTubeFix (primary) │ yt-dlp (fallback) │ YouTube API     │
 └─────────────────────────────────────────────────────────────┘
+
+  api.py (YouTubeToolkit) wires the three layers together (composition root).
 ```
 
 ## Dependencies & Acknowledgments
@@ -218,20 +249,24 @@ youtube-toolkit is built on top of excellent open-source projects:
 ```
 youtube-toolkit/
 ├── youtube_toolkit/
-│   ├── api.py              # YouTubeToolkit main class
-│   ├── sub_apis.py         # 5 Core APIs
+│   ├── api.py              # YouTubeToolkit (composition root)
+│   ├── sub_apis.py         # 5 Core APIs (public surface)
+│   ├── services/           # Business logic + fallback per domain
 │   ├── handlers/           # Backend handlers
 │   │   ├── pytubefix_handler.py
 │   │   ├── yt_dlp_handler.py
 │   │   ├── youtube_api_handler.py
 │   │   └── scrapetube_handler.py
-│   ├── core/               # Data classes
+│   ├── core/               # Data classes + fallback primitive
 │   └── utils/              # Utilities
-├── docs/                   # Documentation
-│   ├── USAGE.md
-│   ├── ARCHITECTURE.md
-│   └── EXTENDING.md
+├── docs/                   # Plans + generated codebase map
+│   ├── plans/
+│   └── codebase-map/
+├── examples/               # Runnable examples
 ├── tests/                  # Test suite (200+ tests)
+├── CLAUDE.md               # Architecture & extending guide
+├── CONTRIBUTING.md
+├── MIGRATION.md            # v1 → v2 migration
 ├── CHANGELOG.md
 └── README.md
 ```
@@ -240,11 +275,11 @@ youtube-toolkit/
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Follow the [architecture guidelines](docs/ARCHITECTURE.md)
+3. Follow the [architecture guidelines](CLAUDE.md)
 4. Add tests for new functionality
 5. Submit a pull request
 
-See [EXTENDING.md](docs/EXTENDING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [CLAUDE.md](CLAUDE.md) for the architecture.
 
 ## License
 
