@@ -5,9 +5,11 @@ Core VideoInfo dataclass for standardized video information.
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 
+from .dict_access import DictAccessMixin
+
 
 @dataclass
-class VideoInfo:
+class VideoInfo(DictAccessMixin):
     """Standardized video information structure."""
 
     title: str

@@ -24,6 +24,8 @@ import os
 import time
 
 from .core.video_info import VideoInfo
+from .core.comments import CommentResult
+from .core.captions import CaptionResult
 
 if TYPE_CHECKING:
     from .api import YouTubeToolkit
@@ -256,7 +258,7 @@ class CommentsGetAPI:
 
     def __call__(self, url: str,
                  limit: int = 100,
-                 order: str = 'relevance') -> Dict[str, Any]:
+                 order: str = 'relevance') -> CommentResult:
         """
         Get comments from a video.
 
@@ -486,7 +488,7 @@ class GetAPI:
         """
         return self._toolkit._get_info.get_lyrics(url)
 
-    def captions(self, url: str) -> Dict[str, Any]:
+    def captions(self, url: str) -> CaptionResult:
         """
         Get available caption tracks.
 
@@ -1383,7 +1385,7 @@ class AnalyzeAPI:
         return result
 
     def comments(self, url: str, max_comments: int = 100,
-                 sort: str = 'relevance') -> Dict[str, Any]:
+                 sort: str = 'relevance') -> CommentResult:
         """
         Get video comments with analytics.
 
@@ -1402,7 +1404,7 @@ class AnalyzeAPI:
 
         return self._toolkit._comments.comments(url, filters=filters)
 
-    def captions(self, url: str) -> Dict[str, Any]:
+    def captions(self, url: str) -> CaptionResult:
         """
         Get caption/subtitle analysis.
 

@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import urllib.parse
 from .video_info import VideoInfo
+from .dict_access import DictAccessMixin
 
 
 class BooleanSearchQuery:
@@ -306,7 +307,7 @@ class SearchFilters:
 
 
 @dataclass
-class SearchResult:
+class SearchResult(DictAccessMixin):
     """Enhanced search result structure with YouTube API v3 compatibility."""
     
     # Core results

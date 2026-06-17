@@ -327,6 +327,74 @@ class TestCaptionsAPI:
             assert isinstance(result, CaptionResult)
 
 
+class TestTypedSecondaryReturns:
+    """Tests that secondary sub-API methods return typed dataclasses (P3 Phase B).
+
+    These methods previously carried ``-> Dict[str, Any]`` annotations while
+    already returning dataclasses at runtime; the annotations were corrected.
+    Verifies both the type and dual attribute/dict-style access.
+    """
+
+    def test_get_comments_returns_comment_result(self):
+        """toolkit.get.comments(...) returns CommentResult with dual access."""
+        from youtube_toolkit import YouTubeToolkit, CommentResult
+
+        toolkit = YouTubeToolkit()
+
+        with patch.object(toolkit._comments, 'comments') as mock:
+            mock.return_value = CommentResult(comments=[], total_results=7)
+
+            result = toolkit.get.comments('https://youtube.com/watch?v=abc123')
+
+            assert isinstance(result, CommentResult)
+            assert result.total_results == 7
+            assert result['total_results'] == 7
+            assert result['total_results'] == result.total_results
+
+    def test_analyze_captions_returns_caption_result(self):
+        """toolkit.analyze.captions(...) returns CaptionResult with dual access."""
+        from youtube_toolkit import YouTubeToolkit, CaptionResult
+
+        toolkit = YouTubeToolkit()
+
+        with patch.object(toolkit._captions, 'captions') as mock:
+            mock.return_value = CaptionResult(tracks=[], quota_cost=50)
+
+            result = toolkit.analyze.captions('https://youtube.com/watch?v=abc123')
+
+            assert isinstance(result, CaptionResult)
+            assert result.quota_cost == 50
+            assert result['quota_cost'] == 50
+
+    def test_analyze_comments_dual_access(self):
+        """toolkit.analyze.comments(...) supports both .key and ['key']."""
+        from youtube_toolkit import YouTubeToolkit, CommentResult
+
+        toolkit = YouTubeToolkit()
+
+        with patch.object(toolkit._comments, 'comments') as mock:
+            mock.return_value = CommentResult(comments=[], total_results=3)
+
+            result = toolkit.analyze.comments('https://youtube.com/watch?v=abc123')
+
+            assert isinstance(result, CommentResult)
+            assert result.total_results == result['total_results'] == 3
+
+    def test_get_captions_dual_access(self):
+        """toolkit.get.captions(...) supports both .key and ['key']."""
+        from youtube_toolkit import YouTubeToolkit, CaptionResult
+
+        toolkit = YouTubeToolkit()
+
+        with patch.object(toolkit._captions, 'captions') as mock:
+            mock.return_value = CaptionResult(tracks=[])
+
+            result = toolkit.get.captions('https://youtube.com/watch?v=abc123')
+
+            assert isinstance(result, CaptionResult)
+            assert result.quota_cost == result['quota_cost']
+
+
 class TestPlaylistAPI:
     """Tests for playlist() new API."""
 

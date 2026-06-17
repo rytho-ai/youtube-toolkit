@@ -40,6 +40,26 @@ the single public surface.
   `download.many(urls, max_workers=N)`, a `concurrent_fragments` option on the
   yt-dlp handler, and async facades `download.audio_async` / `video_async` /
   `many_async`. Parallel paths still respect the thread-safe rate limiter.
+- **`DictAccessMixin` on result dataclasses** (`core/dict_access.py`). `VideoInfo`,
+  `DownloadResult`, `SearchResult`, `CommentResult`, and `CaptionResult` now
+  support read-only dict-style access (`result['title']`, `result.get('title')`,
+  `'title' in result`, `dict(result)`) in addition to attribute access, so code
+  that previously consumed dict returns keeps working after the return became a
+  typed dataclass.
+- **Truthful return annotations on secondary sub-API methods.** `get.comments`,
+  `get.captions`, `analyze.comments`, and `analyze.captions` now declare their
+  real return types (`CommentResult` / `CaptionResult`) instead of the stale
+  `Dict[str, Any]`; runtime behavior is unchanged (these already returned the
+  dataclass).
+
+#### Compatibility notes
+
+- Returns that are now typed dataclasses are **not** `dict` subclasses:
+  `isinstance(result, dict)` is `False`, and `json.dumps(result)` will fail —
+  use `result.to_dict()` (or `json.dumps(result.to_dict())`) for serialization.
+- `DictAccessMixin` covers **read-only** mapping access only. Mutating/unpacking
+  dict semantics (`pop`, `update`, `del`, `len`, `**result`) are intentionally
+  not provided.
 
 ## [1.0.0] - 2024-11-27
 

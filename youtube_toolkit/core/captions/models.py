@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 import re
 
+from ..dict_access import DictAccessMixin
+
 
 class CaptionTrackType(Enum):
     """Caption track types."""
@@ -303,7 +305,7 @@ class CaptionAnalytics:
 
 
 @dataclass
-class CaptionResult:
+class CaptionResult(DictAccessMixin):
     """Comprehensive caption result with analytics."""
     tracks: List[CaptionTrack] = field(default_factory=list)
     content: Optional[CaptionContent] = None
