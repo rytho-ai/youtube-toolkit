@@ -106,19 +106,22 @@ class YTDLPHandler:
     
     @anti_detection_interceptor
     @rate_limit(max_requests=3, window_minutes=1)
-    def download_audio(self, url: str, output_path: str = None, 
-                       format: str = 'wav', progress_callback: bool = True, 
-                       bitrate: str = 'best') -> str:
+    def download_audio(self, url: str, output_path: str = None,
+                       format: str = 'wav', progress_callback: bool = True,
+                       bitrate: str = 'best', concurrent_fragments: int = 1) -> str:
         """
         Download audio from a YouTube video using yt-dlp.
-        
+
         Args:
             url: YouTube video ID or URL
             output_path: Output path for the audio file (directory path for yt-dlp)
             format: Audio format ('wav', 'mp3', 'm4a')
             progress_callback: Whether to show download progress
             bitrate: Audio bitrate ('best', '320k', '256k', '192k', '128k', '96k', '64k')
-            
+            concurrent_fragments: Number of fragments to download in parallel for a
+                single video (yt-dlp's ``concurrent_fragment_downloads``). Default 1
+                = current behaviour (no parallelism).
+
         Returns:
             str: Path to the downloaded audio file
         """
@@ -173,6 +176,10 @@ class YTDLPHandler:
             'no_check_certificate': True,
             'prefer_insecure': False
         }
+
+        # Opt-in single-video fragment parallelism (Phase 5 axis ①).
+        if concurrent_fragments and concurrent_fragments > 1:
+            ydl_opts['concurrent_fragment_downloads'] = concurrent_fragments
 
         # Add cookie support if YOUTUBE_COOKIES_FILE environment variable is set
         cookies_file = os.getenv('YOUTUBE_COOKIES_FILE')
@@ -233,17 +240,21 @@ class YTDLPHandler:
     
     @anti_detection_interceptor
     @rate_limit(max_requests=2, window_minutes=1)
-    def download_video(self, url: str, output_path: str = None, 
-                       quality: str = 'best', progress_callback: bool = True) -> str:
+    def download_video(self, url: str, output_path: str = None,
+                       quality: str = 'best', progress_callback: bool = True,
+                       concurrent_fragments: int = 1) -> str:
         """
         Download video from YouTube using yt-dlp.
-        
+
         Args:
             url: YouTube video ID or URL
             output_path: Output path for the video file (directory path for yt-dlp)
             quality: Video quality ('best', 'worst', '720p', '1080p')
             progress_callback: Whether to show download progress
-            
+            concurrent_fragments: Number of fragments to download in parallel for a
+                single video (yt-dlp's ``concurrent_fragment_downloads``). Default 1
+                = current behaviour (no parallelism).
+
         Returns:
             str: Path to the downloaded video file
         """
@@ -279,6 +290,11 @@ class YTDLPHandler:
             'quiet': not progress_callback,
             'no_warnings': True
         }
+
+        # Opt-in single-video fragment parallelism (Phase 5 axis ①). Inherited by
+        # the format-fallback copies below via ydl_opts.copy().
+        if concurrent_fragments and concurrent_fragments > 1:
+            ydl_opts['concurrent_fragment_downloads'] = concurrent_fragments
 
         # Add cookie support if YOUTUBE_COOKIES_FILE environment variable is set
         cookies_file = os.getenv('YOUTUBE_COOKIES_FILE')
@@ -1724,7 +1740,8 @@ class YTDLPHandler:
                                    match_filter: str = None,
                                    format: str = 'best',
                                    max_downloads: int = None,
-                                   skip_existing: bool = True) -> List[str]:
+                                   skip_existing: bool = True,
+                                   concurrent_fragments: int = 1) -> List[str]:
         """
         Download multiple videos from playlist/channel with filter.
 
@@ -1735,6 +1752,11 @@ class YTDLPHandler:
             format: Format specification
             max_downloads: Maximum number of videos to download
             skip_existing: Skip videos that already exist in output_path
+            concurrent_fragments: Number of fragments to download in parallel per
+                video (yt-dlp's ``concurrent_fragment_downloads``). Default 1 =
+                current behaviour. Note: this is per-video fragment parallelism,
+                not multi-video parallelism (yt-dlp still iterates the batch
+                sequentially so its filter semantics are preserved).
 
         Returns:
             List of paths to downloaded files
@@ -1753,6 +1775,10 @@ class YTDLPHandler:
             'no_warnings': True,
             'ignoreerrors': True,  # Continue on errors
         }
+
+        # Opt-in per-video fragment parallelism (Phase 5 axis ①).
+        if concurrent_fragments and concurrent_fragments > 1:
+            ydl_opts['concurrent_fragment_downloads'] = concurrent_fragments
 
         if match_filter:
             ydl_opts['match_filter'] = self._ydl.utils.match_filter_func(match_filter)
@@ -2126,7 +2152,8 @@ class YTDLPHandler:
 
     def download_short(self, url: str, output_path: str = None,
                        format: str = 'mp4',
-                       with_audio: bool = True) -> str:
+                       with_audio: bool = True,
+                       concurrent_fragments: int = 1) -> str:
         """
         Download a YouTube Short.
 
@@ -2135,6 +2162,9 @@ class YTDLPHandler:
             output_path: Output directory
             format: Output format ('mp4', 'webm')
             with_audio: Include audio in download
+            concurrent_fragments: Number of fragments to download in parallel for a
+                single Short (yt-dlp's ``concurrent_fragment_downloads``). Default 1
+                = current behaviour.
 
         Returns:
             Path to downloaded Short file
@@ -2166,6 +2196,10 @@ class YTDLPHandler:
             'quiet': False,
             'no_warnings': True,
         }
+
+        # Opt-in single-video fragment parallelism (Phase 5 axis ①).
+        if concurrent_fragments and concurrent_fragments > 1:
+            ydl_opts['concurrent_fragment_downloads'] = concurrent_fragments
 
         try:
             with self._ydl.YoutubeDL(ydl_opts) as ydl:
@@ -2235,7 +2269,8 @@ class YTDLPHandler:
 
     def batch_download_shorts(self, channel_url: str, output_path: str = None,
                               max_downloads: int = 10,
-                              format: str = 'mp4') -> List[str]:
+                              format: str = 'mp4',
+                              concurrent_fragments: int = 1) -> List[str]:
         """
         Download multiple Shorts from a channel.
 
@@ -2244,6 +2279,9 @@ class YTDLPHandler:
             output_path: Output directory
             max_downloads: Maximum number of Shorts to download
             format: Output format
+            concurrent_fragments: Number of fragments to download in parallel per
+                Short (yt-dlp's ``concurrent_fragment_downloads``). Default 1 =
+                current behaviour. Shorts are still downloaded one at a time.
 
         Returns:
             List of paths to downloaded files
@@ -2257,7 +2295,8 @@ class YTDLPHandler:
                 path = self.download_short(
                     short['url'],
                     output_path=output_path,
-                    format=format
+                    format=format,
+                    concurrent_fragments=concurrent_fragments
                 )
                 downloaded.append(path)
             except Exception as e:

@@ -13,6 +13,7 @@ youtube_toolkit.core.download.DownloadResult.
 
 import os
 import time
+import concurrent.futures
 from typing import Optional, List, Dict, Any
 from ..core.download import DownloadResult
 
@@ -23,7 +24,10 @@ class DownloadService:
 
     def download_audio(self, url: str, format: str = 'wav',
                        progress_callback: bool = True, prefer_yt_dlp: bool = False,
-                       output_path: str = None, bitrate: str = '128k') -> str:
+                       output_path: str = None, bitrate: str = '128k',
+                       concurrent_fragments: int = 1) -> str:
+        # concurrent_fragments is a yt-dlp-only knob (axis ①); pytubefix has no
+        # equivalent, so it is passed only to the yt-dlp handler calls below.
         video_id = self._toolkit.extract_video_id(url)
 
         # Standardize default output path for consistent behavior
@@ -50,7 +54,7 @@ class DownloadService:
         if prefer_yt_dlp:
             # Try yt-dlp first
             try:
-                return self._toolkit.yt_dlp.download_audio(video_id, output_path=ytdlp_path, format=format, progress_callback=progress_callback, bitrate=bitrate)
+                return self._toolkit.yt_dlp.download_audio(video_id, output_path=ytdlp_path, format=format, progress_callback=progress_callback, bitrate=bitrate, concurrent_fragments=concurrent_fragments)
             except Exception as e:
                 print(f"YT-DLP audio download failed: {e}")
                 # Fallback to pytubefix
@@ -62,11 +66,13 @@ class DownloadService:
             except Exception as e:
                 print(f"PyTubeFix audio download failed: {e}")
                 # Fallback to yt-dlp
-                return self._toolkit.yt_dlp.download_audio(video_id, output_path=ytdlp_path, format=format, progress_callback=progress_callback, bitrate=bitrate)
+                return self._toolkit.yt_dlp.download_audio(video_id, output_path=ytdlp_path, format=format, progress_callback=progress_callback, bitrate=bitrate, concurrent_fragments=concurrent_fragments)
 
     def download_video(self, url: str, quality: str = 'best',
                        progress_callback: bool = True, prefer_yt_dlp: bool = True,
-                       output_path: str = None) -> str:
+                       output_path: str = None, concurrent_fragments: int = 1) -> str:
+        # concurrent_fragments is a yt-dlp-only knob (axis ①); pytubefix has no
+        # equivalent, so it is passed only to the yt-dlp handler calls below.
         video_id = self._toolkit.extract_video_id(url)
 
         # Standardize default output path for consistent behavior
@@ -98,7 +104,7 @@ class DownloadService:
             try:
                 if self._toolkit.verbose:
                     print("🎯 Trying YT-DLP first...")
-                return self._toolkit.yt_dlp.download_video(video_id, output_path=ytdlp_path, quality=quality, progress_callback=effective_progress)
+                return self._toolkit.yt_dlp.download_video(video_id, output_path=ytdlp_path, quality=quality, progress_callback=effective_progress, concurrent_fragments=concurrent_fragments)
             except Exception as e:
                 if self._toolkit.verbose:
                     print(f"YT-DLP video download failed: {e}")
@@ -116,7 +122,7 @@ class DownloadService:
                     print(f"PyTubeFix video download failed: {e}")
                     print("🔄 Falling back to YT-DLP...")
                 # Fallback to yt-dlp
-                return self._toolkit.yt_dlp.download_video(video_id, output_path=ytdlp_path, quality=quality, progress_callback=effective_progress)
+                return self._toolkit.yt_dlp.download_video(video_id, output_path=ytdlp_path, quality=quality, progress_callback=effective_progress, concurrent_fragments=concurrent_fragments)
 
     def download(self, url: str, type: str = 'audio', format: str = 'wav',
                  quality: str = 'best', output_path: Optional[str] = None,
@@ -176,6 +182,67 @@ class DownloadService:
                 backend_used=backend_used,
             )
 
+    def download_many(self, urls, *, media_type='audio', format='wav',
+                      quality='720p', max_workers=1, **kwargs):
+        """Download multiple videos, optionally in parallel (Phase 5 axis ②).
+
+        This is the single owner of multi-video fan-out: it dispatches each URL
+        through the api-layer ``download_audio`` / ``download_video`` (so handler
+        fallback + the thread-safe ``@rate_limit`` still apply) and never shares a
+        single YoutubeDL object across threads — each api call builds its own.
+
+        Conservative by design: ``max_workers <= 1`` runs a plain sequential loop
+        (behaviour identical to calling the per-video method one at a time);
+        ``max_workers > 1`` fans out with a bounded ThreadPoolExecutor. async does
+        not make any single download faster — see the *_async wrappers.
+
+        Args:
+            urls: Iterable of video URLs.
+            media_type: 'audio' or 'video'.
+            format: Audio format (only used when media_type='audio').
+            quality: Video quality (only used when media_type='video').
+            max_workers: Parallelism cap. <=1 = sequential.
+            **kwargs: Extra options forwarded to the per-video download
+                (e.g. output_path, bitrate, concurrent_fragments, prefer_yt_dlp).
+
+        Returns:
+            List[Dict] aligned to the input order, each
+            ``{'url', 'success', 'path', 'error'}``. A single failure does not
+            abort the others.
+        """
+        urls = list(urls)
+
+        def _one(url):
+            try:
+                if media_type == 'audio':
+                    path = self._toolkit.download_audio(url, format=format, **kwargs)
+                elif media_type == 'video':
+                    path = self._toolkit.download_video(url, quality=quality, **kwargs)
+                else:
+                    raise ValueError(
+                        f"Invalid media_type: {media_type}. Must be 'audio' or 'video'"
+                    )
+                return {'url': url, 'success': True, 'path': path, 'error': None}
+            except Exception as e:
+                return {'url': url, 'success': False, 'path': None, 'error': str(e)}
+
+        # Sequential path: plain loop, no executor (predictable, behaviour ==
+        # calling the per-video method one at a time).
+        if max_workers <= 1:
+            return [_one(url) for url in urls]
+
+        # Parallel path: bounded fan-out, results re-aligned to input order.
+        results: List[Optional[Dict]] = [None] * len(urls)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(_one, url): i for i, url in enumerate(urls)
+            }
+            for future in concurrent.futures.as_completed(future_to_index):
+                i = future_to_index[future]
+                results[i] = future.result()
+
+        return results
+
     def download_with_sponsorblock(self, url: str, output_path: str = None,
                                    action: str = 'remove',
                                    categories: List[str] = None) -> str:
@@ -233,9 +300,11 @@ class DownloadService:
                                    match_filter: str = None,
                                    format: str = 'best',
                                    max_downloads: int = None,
-                                   skip_existing: bool = True) -> List[str]:
+                                   skip_existing: bool = True,
+                                   concurrent_fragments: int = 1) -> List[str]:
         return self._toolkit.yt_dlp.batch_download_with_filter(
-            url, output_path, match_filter, format, max_downloads, skip_existing
+            url, output_path, match_filter, format, max_downloads, skip_existing,
+            concurrent_fragments=concurrent_fragments
         )
 
     def download_with_metadata_files(self, url: str, output_path: str = None,
@@ -261,8 +330,12 @@ class DownloadService:
 
     def batch_download_shorts(self, channel_url: str, output_path: str = None,
                               max_downloads: int = 10,
-                              format: str = 'mp4') -> List[str]:
-        return self._toolkit.yt_dlp.batch_download_shorts(channel_url, output_path, max_downloads, format)
+                              format: str = 'mp4',
+                              concurrent_fragments: int = 1) -> List[str]:
+        return self._toolkit.yt_dlp.batch_download_shorts(
+            channel_url, output_path, max_downloads, format,
+            concurrent_fragments=concurrent_fragments
+        )
 
     def get_supported_browsers(self) -> List[str]:
         return ['chrome', 'firefox', 'safari', 'edge', 'opera', 'brave', 'chromium', 'vivaldi']

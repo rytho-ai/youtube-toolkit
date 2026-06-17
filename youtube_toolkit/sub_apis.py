@@ -966,6 +966,76 @@ class DownloadAPI:
             url, output_path=output_path, cookies=cookies_file
         )
 
+    def many(self, urls, *, media_type: str = 'audio', max_workers: int = 1,
+             **kwargs) -> List[Dict[str, Any]]:
+        """
+        Download several videos at once (Phase 5 axis ②).
+
+        Conservative parallelism: ``max_workers=1`` (default) is sequential and
+        behaves exactly like calling ``audio``/``video`` per URL; ``max_workers>1``
+        fans out across a bounded thread pool. Every per-video download still goes
+        through the api layer, so handler fallback and the thread-safe rate limiter
+        keep pacing real requests under fan-out.
+
+        Args:
+            urls: Iterable of video URLs.
+            media_type: 'audio' or 'video'.
+            max_workers: Parallelism cap; <=1 = sequential.
+            **kwargs: Forwarded per-video options (format, quality, output_path,
+                bitrate, concurrent_fragments, prefer_yt_dlp, ...).
+
+        Returns:
+            List of dicts aligned to input order:
+            ``{'url', 'success', 'path', 'error'}``.
+        """
+        return self._toolkit.download_many(
+            urls, media_type=media_type, max_workers=max_workers, **kwargs
+        )
+
+    # --- Async facade (Phase 5 axis ③) ---
+    # Thin wrappers over the synchronous methods using a thread pool. async does
+    # NOT make any single download faster; it exists so a server/agent can serve
+    # multiple download requests without blocking the event loop.
+
+    async def audio_async(self, url, **kwargs):
+        """Async wrapper over :meth:`audio` (runs it in a thread executor).
+
+        Does not speed up a single download; lets callers ``await`` it without
+        blocking the event loop.
+        """
+        import asyncio
+        import functools
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self.audio, url, **kwargs)
+        )
+
+    async def video_async(self, url, **kwargs):
+        """Async wrapper over :meth:`video` (runs it in a thread executor).
+
+        Does not speed up a single download; lets callers ``await`` it without
+        blocking the event loop.
+        """
+        import asyncio
+        import functools
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self.video, url, **kwargs)
+        )
+
+    async def many_async(self, urls, **kwargs):
+        """Async wrapper over :meth:`many` (runs it in a thread executor).
+
+        Does not speed up downloads; lets callers ``await`` a multi-download
+        without blocking the event loop.
+        """
+        import asyncio
+        import functools
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self.many, urls, **kwargs)
+        )
+
 
 # =============================================================================
 # SEARCH API - Find content

@@ -131,12 +131,13 @@ class YouTubeToolkit:
         """
         return self._get_info.get_video_info(url)
     
-    def download_audio(self, url: str, format: str = 'wav', 
+    def download_audio(self, url: str, format: str = 'wav',
                        progress_callback: bool = True, prefer_yt_dlp: bool = False,
-                       output_path: str = None, bitrate: str = '128k') -> str:
+                       output_path: str = None, bitrate: str = '128k',
+                       concurrent_fragments: int = 1) -> str:
         """
         Download audio with automatic fallback.
-        
+
         Args:
             url: YouTube video URL
             format: Audio format ('wav', 'mp3', 'm4a')
@@ -146,17 +147,21 @@ class YouTubeToolkit:
                          For pytubefix: full file path including filename
                          For yt-dlp: directory path (filename auto-generated)
             bitrate: Audio bitrate ('best', '320k', '256k', '192k', '128k', '96k', '64k')
-            
+            concurrent_fragments: Per-video fragment parallelism for the yt-dlp path
+                (axis ①). Default 1 = current behaviour. Ignored on the pytubefix
+                path (no equivalent).
+
         Returns:
             Path to downloaded audio file
         """
         return self._download.download_audio(
-            url, format, progress_callback, prefer_yt_dlp, output_path, bitrate
+            url, format, progress_callback, prefer_yt_dlp, output_path, bitrate,
+            concurrent_fragments=concurrent_fragments
         )
     
     def download_video(self, url: str, quality: str = 'best',
                        progress_callback: bool = True, prefer_yt_dlp: bool = True,
-                       output_path: str = None) -> str:
+                       output_path: str = None, concurrent_fragments: int = 1) -> str:
         """
         Download video with automatic fallback.
 
@@ -175,11 +180,51 @@ class YouTubeToolkit:
         Note:
             yt-dlp is now preferred by default due to better reliability and fewer
             broken pipe errors compared to PyTubeFix's MoviePy+ffmpeg combination.
+
+            concurrent_fragments (default 1 = current behaviour) enables per-video
+            fragment parallelism on the yt-dlp path only (axis ①); ignored on the
+            pytubefix path.
         """
         return self._download.download_video(
-            url, quality, progress_callback, prefer_yt_dlp, output_path
+            url, quality, progress_callback, prefer_yt_dlp, output_path,
+            concurrent_fragments=concurrent_fragments
         )
-    
+
+    def download_many(self, urls, *, media_type: str = 'audio', format: str = 'wav',
+                      quality: str = '720p', max_workers: int = 1,
+                      **kwargs) -> List[Dict[str, Any]]:
+        """
+        Download multiple videos, optionally in parallel (Phase 5 axis ②).
+
+        Conservative parallelism: ``max_workers=1`` (default) runs sequentially,
+        identical to calling download_audio/download_video one URL at a time.
+        ``max_workers>1`` fans out across a bounded thread pool, but every
+        per-video download still goes through the api layer (handler fallback +
+        the thread-safe ``@rate_limit``), so the rate limiter keeps pacing real
+        requests even under fan-out — parallelism just means requests queue at the
+        limiter rather than turning into bot-like bursts.
+
+        Note: async/parallel never makes a *single* download faster; it lets a
+        server/agent service several downloads without serializing on each.
+
+        Args:
+            urls: Iterable of video URLs.
+            media_type: 'audio' or 'video'.
+            format: Audio format (media_type='audio').
+            quality: Video quality (media_type='video').
+            max_workers: Parallelism cap; <=1 = sequential.
+            **kwargs: Forwarded per-video options (output_path, bitrate,
+                concurrent_fragments, prefer_yt_dlp, ...).
+
+        Returns:
+            List of dicts aligned to input order:
+            ``{'url', 'success', 'path', 'error'}``.
+        """
+        return self._download.download_many(
+            urls, media_type=media_type, format=format, quality=quality,
+            max_workers=max_workers, **kwargs
+        )
+
     def get_available_formats(self, url: str) -> Dict[str, Any]:
         """
         Get available download formats.
@@ -652,12 +697,13 @@ class YouTubeToolkit:
         """
         return self._playlist.get_playlist_urls(playlist_url)
     
-    def download_playlist_media(self, playlist_url: str, media_type: str = 'audio', 
+    def download_playlist_media(self, playlist_url: str, media_type: str = 'audio',
                                format: str = 'wav', quality: str = 'best',
-                               include_captions: bool = False, audio_bitrate: str = '128k') -> Dict[str, Any]:
+                               include_captions: bool = False, audio_bitrate: str = '128k',
+                               max_workers: int = 1) -> Dict[str, Any]:
         """
         Download media from all videos in playlist.
-        
+
         Args:
             playlist_url: YouTube playlist URL
             media_type: 'audio' or 'video'
@@ -665,12 +711,16 @@ class YouTubeToolkit:
             quality: Video quality (only used if media_type='video')
             include_captions: Whether to download captions for each video
             audio_bitrate: Audio bitrate ('best', '320k', '256k', '192k', '128k', '96k', '64k') - only used if media_type='audio'
-            
+            max_workers: Per-video parallelism (axis ②). Default 1 = current
+                sequential behaviour. >1 fans per-video downloads out across a
+                bounded thread pool; metadata structure and counts are unchanged.
+
         Returns:
             Dictionary with results summary
         """
         return self._playlist.download_playlist_media(
-            playlist_url, media_type, format, quality, include_captions, audio_bitrate
+            playlist_url, media_type, format, quality, include_captions, audio_bitrate,
+            max_workers=max_workers
         )
     
     def _sanitize_filename(self, filename: str) -> str:
@@ -1446,7 +1496,8 @@ class YouTubeToolkit:
                                    match_filter: str = None,
                                    format: str = 'best',
                                    max_downloads: int = None,
-                                   skip_existing: bool = True) -> List[str]:
+                                   skip_existing: bool = True,
+                                   concurrent_fragments: int = 1) -> List[str]:
         """
         Download multiple videos from playlist/channel with filter.
 
@@ -1457,12 +1508,16 @@ class YouTubeToolkit:
             format: Format specification
             max_downloads: Maximum number of videos to download
             skip_existing: Skip videos that already exist in output_path
+            concurrent_fragments: Per-video fragment parallelism (axis ①). Default
+                1 = current behaviour. This is NOT multi-video parallelism: yt-dlp
+                still iterates the batch sequentially so its filter semantics hold.
 
         Returns:
             List of paths to downloaded files
         """
         return self._download.batch_download_with_filter(
-            url, output_path, match_filter, format, max_downloads, skip_existing
+            url, output_path, match_filter, format, max_downloads, skip_existing,
+            concurrent_fragments=concurrent_fragments
         )
 
     # --- Metadata File Export Methods ---
@@ -1587,7 +1642,8 @@ class YouTubeToolkit:
 
     def batch_download_shorts(self, channel_url: str, output_path: str = None,
                               max_downloads: int = 10,
-                              format: str = 'mp4') -> List[str]:
+                              format: str = 'mp4',
+                              concurrent_fragments: int = 1) -> List[str]:
         """
         Download multiple Shorts from a channel.
 
@@ -1596,11 +1652,16 @@ class YouTubeToolkit:
             output_path: Output directory
             max_downloads: Maximum number of Shorts to download
             format: Output format
+            concurrent_fragments: Per-Short fragment parallelism (axis ①). Default
+                1 = current behaviour. Shorts are still downloaded one at a time.
 
         Returns:
             List of paths to downloaded files
         """
-        return self._download.batch_download_shorts(channel_url, output_path, max_downloads, format)
+        return self._download.batch_download_shorts(
+            channel_url, output_path, max_downloads, format,
+            concurrent_fragments=concurrent_fragments
+        )
 
     # ==================== v0.7 ANALYTICAL FEATURES ====================
 

@@ -47,7 +47,8 @@ class PlaylistService:
 
     def download_playlist_media(self, playlist_url: str, media_type: str = 'audio',
                                format: str = 'wav', quality: str = 'best',
-                               include_captions: bool = False, audio_bitrate: str = '128k') -> Dict[str, Any]:
+                               include_captions: bool = False, audio_bitrate: str = '128k',
+                               max_workers: int = 1) -> Dict[str, Any]:
         import json
         import os
         import time
@@ -108,11 +109,19 @@ class PlaylistService:
 
         start_time = time.time()
 
-        # Download each video into metadata
-        self._download_playlist_videos(
-            urls, media_type, format, quality, include_captions, audio_bitrate,
-            folders, playlist_dir, metadata
-        )
+        # Download each video into metadata. max_workers == 1 (default) keeps the
+        # existing sequential path verbatim; >1 fans the per-video downloads out
+        # across a bounded thread pool, producing the same metadata structure.
+        if max_workers <= 1:
+            self._download_playlist_videos(
+                urls, media_type, format, quality, include_captions, audio_bitrate,
+                folders, playlist_dir, metadata
+            )
+        else:
+            self._download_playlist_videos_parallel(
+                urls, media_type, format, quality, include_captions, audio_bitrate,
+                folders, playlist_dir, metadata, max_workers
+            )
 
         # Finalize statistics, persist metadata and print summary
         metadata_path = self._finalize_playlist_download(
@@ -214,6 +223,129 @@ class PlaylistService:
                 }
 
                 metadata['videos'].append(video_metadata)
+                metadata['download_summary']['failed_downloads'] += 1
+
+    def _download_one_playlist_video(self, i, url, total, media_type, format,
+                                     quality, include_captions, audio_bitrate,
+                                     folders, playlist_dir):
+        """Download a single playlist video; return its metadata dict + success flag.
+
+        Pure per-video work with no shared mutable state — safe to call from a
+        thread. Mirrors the success/failure metadata shape produced by the
+        sequential ``_download_playlist_videos`` loop exactly.
+
+        Returns:
+            Tuple ``(video_metadata: dict, success: bool)``.
+        """
+        import os
+
+        try:
+            print(f"📥 [{i}/{total}] Processing...")
+
+            # Get video info
+            video_info = self._toolkit.get_video_info(url)
+            video_title = self._toolkit._sanitize_filename(video_info['title'])
+
+            # Download main media
+            if media_type == 'audio':
+                media_path = self._toolkit.download_audio(
+                    url,
+                    format=format,
+                    output_path=os.path.join(folders['audio'], f"{video_title}.{format}"),
+                    bitrate=audio_bitrate
+                )
+            else:  # video
+                media_path = self._toolkit.download_video(
+                    url,
+                    quality=quality,
+                    output_path=os.path.join(folders['video'], f"{video_title}.mp4")
+                )
+
+            # Download captions if requested
+            caption_path = None
+            if include_captions:
+                try:
+                    caption_path = self._toolkit.download_captions(
+                        url,
+                        language_code='en',
+                        output_path=os.path.join(folders['captions'], f"{video_title}_en.txt")
+                    )
+                except Exception as e:
+                    print(f"⚠️  Captions failed: {e}")
+                    # Continue without captions rather than failing the whole download
+
+            video_metadata = {
+                'index': i,
+                'video_id': video_info.get('video_id', ''),
+                'title': video_info['title'],
+                'channel': video_info.get('channel', 'Unknown'),
+                'duration': video_info.get('duration', 0),
+                'views': video_info.get('view_count', 0),
+                'upload_date': video_info.get('upload_date', ''),
+                'download_status': 'success',
+                'files': {
+                    'audio': os.path.relpath(media_path, playlist_dir) if media_type == 'audio' else None,
+                    'video': os.path.relpath(media_path, playlist_dir) if media_type == 'video' else None,
+                    'caption': os.path.relpath(caption_path, playlist_dir) if caption_path else None
+                },
+                'error': None
+            }
+
+            print(f"✅ Downloaded: {video_title}")
+            return video_metadata, True
+
+        except Exception as e:
+            error_msg = f"Video {i} failed: {e}"
+            print(f"❌ {error_msg}")
+
+            video_metadata = {
+                'index': i,
+                'video_id': self._toolkit.extract_video_id(url),
+                'title': f"Video {i}",
+                'channel': 'Unknown',
+                'duration': 0,
+                'views': 0,
+                'upload_date': '',
+                'download_status': 'failed',
+                'files': {'audio': None, 'video': None, 'caption': None},
+                'error': str(e)
+            }
+            return video_metadata, False
+
+    def _download_playlist_videos_parallel(self, urls, media_type, format, quality,
+                                           include_captions, audio_bitrate,
+                                           folders, playlist_dir, metadata, max_workers):
+        """Parallel per-video downloads producing the same metadata as the loop.
+
+        Fans the per-video work out across a bounded ``ThreadPoolExecutor`` and
+        then assembles ``metadata['videos']`` in input order, so the result is
+        structurally identical to the sequential path (no shared-state mutation
+        from worker threads — results are collected then merged here).
+        """
+        import concurrent.futures
+
+        total = len(urls)
+        results = [None] * total
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(
+                    self._download_one_playlist_video,
+                    i, url, total, media_type, format, quality,
+                    include_captions, audio_bitrate, folders, playlist_dir
+                ): idx
+                for idx, (i, url) in enumerate(enumerate(urls, 1))
+            }
+            for future in concurrent.futures.as_completed(future_to_index):
+                idx = future_to_index[future]
+                results[idx] = future.result()
+
+        # Merge in input order so counts and videos list match the sequential run.
+        for video_metadata, success in results:
+            metadata['videos'].append(video_metadata)
+            if success:
+                metadata['download_summary']['successful_downloads'] += 1
+            else:
                 metadata['download_summary']['failed_downloads'] += 1
 
     def _finalize_playlist_download(self, metadata, playlist_dir, urls, start_time):
