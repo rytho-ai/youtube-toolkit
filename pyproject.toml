@@ -69,11 +69,11 @@ Repository = "https://github.com/rhythmculture/youtube-toolkit"
 Issues = "https://github.com/rhythmculture/youtube-toolkit/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["youtube_toolkit"]
+packages = ["src/youtube_toolkit"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/youtube_toolkit",
+    "/src/youtube_toolkit",
     "/README.md",
     "/LICENSE",
     "/pyproject.toml",

@@ -151,7 +151,7 @@ This is the only thing api.py does — it never grows a delegation method.
 ### File Structure
 
 ```
-youtube_toolkit/
+src/youtube_toolkit/       # src layout: the package lives under src/, never at repo root
 ├── api.py                 # Composition root: YouTubeToolkit.__init__ wires it all
 ├── sub_apis.py            # Action facades (GetAPI, DownloadAPI, ...) -> call services
 ├── services/              # Business logic per domain (the api.py bodies live here)
@@ -182,6 +182,19 @@ youtube_toolkit/
 - **services/ classes**: Use `*Service` suffix like `GetInfoService`, `DownloadService`
 - **sub_apis.py classes**: Use `*API` suffix like `GetAPI`, `DownloadAPI`, `SponsorBlockAPI`
 - **handlers**: Use `*Handler` suffix like `YTDLPHandler`, `PyTubeFixHandler`
+
+## Environment & Tooling
+
+- **src layout (required).** The package lives at `src/youtube_toolkit/`, never at
+  the repo root. This forces tests/examples to run against the *installed* package
+  rather than the cwd source tree, closing the class of "passes locally,
+  `ImportError` after install" packaging bugs. `pyproject.toml` declares
+  `packages = ["src/youtube_toolkit"]` (wheel) and `/src/youtube_toolkit` (sdist).
+- **`uv` first, `pip` only as fallback.** Use `uv` for all dependency and
+  environment work — `uv sync`, `uv run …`, `uv add …`, `uv build`. Reach for
+  `pip`/`uv pip install` only when something genuinely can't be expressed through
+  `uv` (e.g. installing the built wheel into a foreign environment). Do not add
+  bare `pip install` steps to docs, CI, or scripts when a `uv` equivalent exists.
 
 ## Testing
 

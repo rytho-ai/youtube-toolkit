@@ -24,6 +24,11 @@ the single public surface.
 - The fallback decision is a single primitive, `core/fallback.run_with_fallback`.
 - `captions.py` was split into the `core/captions/` package (models / convert /
   analytics).
+- **Adopted src layout.** The package moved from the repo root to
+  `src/youtube_toolkit/` so tests and examples run against the *installed*
+  package, not the cwd source tree. Import path (`import youtube_toolkit`) is
+  unchanged; only the on-disk location and the `pyproject.toml` packaging paths
+  moved.
 
 #### Removed (BREAKING)
 

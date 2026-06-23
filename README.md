@@ -37,15 +37,20 @@ brew install ffmpeg
 
 ### Install the Package
 
+This project uses **[uv](https://docs.astral.sh/uv/) as its primary toolchain** —
+prefer it over `pip` for installs and environment management.
+
 ```bash
-# With uv (recommended)
+# With uv (preferred)
+uv add git+https://github.com/rhythmculture/youtube-toolkit.git
+# ...or into an active environment:
 uv pip install git+https://github.com/rhythmculture/youtube-toolkit.git
 
-# With pip
-pip install git+https://github.com/rhythmculture/youtube-toolkit.git
-
 # Specific version
-uv pip install git+https://github.com/rhythmculture/youtube-toolkit.git@v2.0.0
+uv add git+https://github.com/rhythmculture/youtube-toolkit.git@v2.0.0
+
+# Fallback, only if uv is unavailable
+pip install git+https://github.com/rhythmculture/youtube-toolkit.git
 ```
 
 ### YouTube API Key (Optional)
@@ -248,17 +253,18 @@ youtube-toolkit is built on top of excellent open-source projects:
 
 ```
 youtube-toolkit/
-├── youtube_toolkit/
-│   ├── api.py              # YouTubeToolkit (composition root)
-│   ├── sub_apis.py         # 5 Core APIs (public surface)
-│   ├── services/           # Business logic + fallback per domain
-│   ├── handlers/           # Backend handlers
-│   │   ├── pytubefix_handler.py
-│   │   ├── yt_dlp_handler.py
-│   │   ├── youtube_api_handler.py
-│   │   └── scrapetube_handler.py
-│   ├── core/               # Data classes + fallback primitive
-│   └── utils/              # Utilities
+├── src/                        # src layout — package lives here, not at repo root
+│   └── youtube_toolkit/
+│       ├── api.py              # YouTubeToolkit (composition root)
+│       ├── sub_apis.py         # 5 Core APIs (public surface)
+│       ├── services/           # Business logic + fallback per domain
+│       ├── handlers/           # Backend handlers
+│       │   ├── pytubefix_handler.py
+│       │   ├── yt_dlp_handler.py
+│       │   ├── youtube_api_handler.py
+│       │   └── scrapetube_handler.py
+│       ├── core/               # Data classes + fallback primitive
+│       └── utils/              # Utilities
 ├── docs/                   # Plans + generated codebase map
 │   ├── plans/
 │   └── codebase-map/
