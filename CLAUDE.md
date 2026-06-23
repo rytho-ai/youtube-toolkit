@@ -54,8 +54,12 @@ services + sub-APIs together, and it keeps just two bare helpers.
 **Rule 1 — Sub-APIs call the matching SERVICE directly, NOT handlers.**
 A sub-API method body calls `self._toolkit._<svc>.<method>(...)` (e.g.
 `self._toolkit._get_info.get_video_info_pytubefix(url)`). It never reaches into a
-handler. (Executable guard: `grep -E '_toolkit\.(pytubefix|ytdlp|yt_dlp|youtube_api)\.' youtube_toolkit/sub_apis.py`
-must return **0**.)
+handler — neither via `self._toolkit.<handler>` nor by importing/instantiating a
+handler class inline. (Executable guard — both must return **0** over
+`src/youtube_toolkit/sub_apis.py`:
+`grep -E '_toolkit\.(pytubefix|ytdlp|yt_dlp|youtube_api)\.'` **and**
+`grep -E 'import .*Handler|[A-Za-z]+Handler\('` — the second catches the
+`from .handlers... import XxxHandler; XxxHandler()` end-run the first misses.)
 
 **Rule 2 — Services own the handler-fallback.**
 A service is where handlers actually get called and where fallback is decided,

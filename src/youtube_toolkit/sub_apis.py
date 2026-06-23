@@ -70,17 +70,9 @@ class ChannelGetAPI:
         Returns:
             List of video info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_channel_videos(channel, limit=limit, sort_by=sort_by)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Using pytubefix.")
-
         return self._toolkit._channel.get_channel_videos(
-            channel, content_type='videos', limit=limit, sort_by=sort_by
+            channel, content_type='videos', limit=limit, sort_by=sort_by,
+            use_scrapetube=use_scrapetube
         )
 
     def shorts(self, channel: str,
@@ -97,17 +89,9 @@ class ChannelGetAPI:
         Returns:
             List of shorts info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_channel_shorts(channel, limit=limit)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Using pytubefix.")
-
         return self._toolkit._channel.get_channel_videos(
-            channel, content_type='shorts', limit=limit
+            channel, content_type='shorts', limit=limit,
+            use_scrapetube=use_scrapetube
         )
 
     def streams(self, channel: str,
@@ -124,17 +108,9 @@ class ChannelGetAPI:
         Returns:
             List of stream info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_channel_streams(channel, limit=limit)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Using pytubefix.")
-
         return self._toolkit._channel.get_channel_videos(
-            channel, content_type='live', limit=limit
+            channel, content_type='live', limit=limit,
+            use_scrapetube=use_scrapetube
         )
 
     def all_videos(self, channel: str,
@@ -152,24 +128,7 @@ class ChannelGetAPI:
         Raises:
             ImportError: If scrapetube is not installed
         """
-        try:
-            from .handlers.scrapetube_handler import ScrapeTubeHandler
-            handler = ScrapeTubeHandler()
-
-            if content_type == 'videos':
-                return handler.get_channel_videos(channel, limit=None)
-            elif content_type == 'shorts':
-                return handler.get_channel_shorts(channel, limit=None)
-            elif content_type == 'streams':
-                return handler.get_channel_streams(channel, limit=None)
-            else:
-                raise ValueError(f"Invalid content_type: {content_type}")
-
-        except ImportError:
-            raise ImportError(
-                "scrapetube is required for unlimited channel videos. "
-                "Install with: pip install youtube-toolkit[scrapers]"
-            )
+        return self._toolkit._channel.get_all_channel_videos(channel, content_type=content_type)
 
     def playlists(self, channel: str,
                   limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -233,20 +192,9 @@ class PlaylistGetAPI:
         Returns:
             List of video info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_playlist_videos(url, limit=limit)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Getting URLs only.")
-
-        # Fallback: get URLs and fetch info for each
-        urls = self.urls(url)
-        if limit:
-            urls = urls[:limit]
-        return urls  # Return URLs, user can fetch details if needed
+        return self._toolkit._playlist.get_playlist_videos(
+            url, limit=limit, use_scrapetube=use_scrapetube
+        )
 
 
 class CommentsGetAPI:

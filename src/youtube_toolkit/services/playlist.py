@@ -8,7 +8,7 @@ bodies are verbatim moves with self.* -> self._toolkit.*.
 Reads: youtube_toolkit.api.YouTubeToolkit (back-ref), handlers via toolkit.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 class PlaylistService:
@@ -44,6 +44,22 @@ class PlaylistService:
 
         print("❌ All playlist methods failed")
         return []
+
+    def get_playlist_videos(self, playlist_url: str,
+                            limit: Optional[int] = None,
+                            use_scrapetube: bool = False) -> List[Any]:
+        """Playlist video details via scrapetube; else the playlist URLs (sliced)."""
+        if use_scrapetube:
+            try:
+                from ..handlers.scrapetube_handler import ScrapeTubeHandler
+                scrapetube = ScrapeTubeHandler()
+                return scrapetube.get_playlist_videos(playlist_url, limit=limit)
+            except ImportError:
+                if self._toolkit.verbose:
+                    print("⚠️ scrapetube not installed. Getting URLs only.")
+
+        urls = self.get_playlist_urls(playlist_url)
+        return urls[:limit] if limit else urls
 
     def download_playlist_media(self, playlist_url: str, media_type: str = 'audio',
                                format: str = 'wav', quality: str = 'best',
