@@ -1114,38 +1114,32 @@ class SearchAPI:
 
     def videos(self, query: str,
                limit: int = 20,
-               use_api: bool = False) -> List[Dict[str, Any]]:
+               use_api: bool = False,
+               sort_by: str = 'relevance') -> List[Dict[str, Any]]:
         """
         Search for videos.
+
+        One entry point for video search; the service picks the backend that
+        satisfies the request — you state intent, not mechanism:
+
+        - ``use_api=False`` (default): no key, no quota. Uses scrapetube
+          (honours ``sort_by``), falling back to pytubefix.
+        - ``use_api=True``: the YouTube Data API path (requires a key, uses
+          quota). ``sort_by`` is **not** applied here yet — API ordering is a
+          separate backlog item; pass it only with the no-API path for now.
 
         Args:
             query: Search query
             limit: Maximum results
-            use_api: Use YouTube API (requires API key, uses quota)
+            use_api: Use the YouTube Data API (requires key/quota)
+            sort_by: 'relevance', 'date', 'views', or 'rating' (no-API path only)
 
         Returns:
             List of video results
         """
         if use_api:
             return self._toolkit._search.search_videos_api(query, limit)
-
-        # Try pytubefix first, then scrapetube
-        try:
-            results = self._toolkit._search.search_videos_pytubefix(query, limit)
-            if results:
-                return results
-        except Exception:
-            pass
-
-        # Fallback to scrapetube
-        try:
-            from .handlers.scrapetube_handler import ScrapeTubeHandler
-            handler = ScrapeTubeHandler()
-            return handler.search(query, limit=limit)
-        except ImportError:
-            pass
-
-        return []
+        return self._toolkit._search.search_without_api(query, limit=limit, sort_by=sort_by)
 
     def channels(self, query: str,
                  limit: int = 20) -> List[Dict[str, Any]]:

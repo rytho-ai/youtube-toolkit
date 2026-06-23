@@ -88,6 +88,7 @@ behind each sub-API call is identical to the old flat method it replaces.
 | Removed flat method | New call |
 |---|---|
 | `search_videos(query)` | `toolkit.search.videos(query)` |
+| `search_without_api(query, limit=, sort_by=)` | `toolkit.search.videos(query, limit=, sort_by=)` (no-API path; the default) |
 | `advanced_search(query, ...)` | `toolkit.search.with_filters(query, ...)` |
 | `search_with_filters(query, ...)` | `toolkit.search.with_filters(query, ...)` |
 | `get_trending_videos(...)` | `toolkit.search.trending(...)` |
@@ -151,7 +152,7 @@ sub-API home) on request:
   `get_comments_raw`.
 - **Search extras**: `search_live_content`, `search_by_category`,
   `search_sponsored_content`, `search_with_boolean_query`, `search_paginated`,
-  `search_without_api`, `get_category_by_id`.
+  `get_category_by_id`.
 - **Channel extras**: `get_channel_subscriptions`, `check_subscription`,
   `get_channel_activities`, `get_recent_uploads`, `get_channel_sections`,
   `get_channel_featured_channels`, `get_multiple_channels`.
