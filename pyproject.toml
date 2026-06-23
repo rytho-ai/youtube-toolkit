@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "youtube-toolkit"
-version = "1.0.0"
+version = "2.0.0"
 description = "A comprehensive YouTube information and download toolkit combining multiple packages with robust download fallbacks"
 readme = "README.md"
 license = {text = "MIT"}
@@ -69,11 +69,11 @@ Repository = "https://github.com/rhythmculture/youtube-toolkit"
 Issues = "https://github.com/rhythmculture/youtube-toolkit/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["youtube_toolkit"]
+packages = ["src/youtube_toolkit"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/youtube_toolkit",
+    "/src/youtube_toolkit",
     "/README.md",
     "/LICENSE",
     "/pyproject.toml",

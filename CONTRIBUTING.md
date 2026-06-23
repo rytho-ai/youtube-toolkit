@@ -6,7 +6,7 @@ Thank you for your interest in contributing to YouTube Toolkit! This document pr
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - [uv](https://github.com/astral-sh/uv) for dependency management
 - FFmpeg installed on your system
 
@@ -72,28 +72,13 @@ git commit -m "Add: brief description of change"
 
 5. Push and create a pull request
 
-## Project Structure
+## Architecture
 
-```
-youtube-toolkit/
-├── youtube_toolkit/
-│   ├── __init__.py          # Package entry point
-│   ├── main.py              # Main YouTubeToolkit class
-│   ├── core/                # Core data structures
-│   │   ├── video_info.py    # VideoInfo dataclass
-│   │   ├── download.py      # DownloadResult dataclass
-│   │   ├── search.py        # Search-related classes
-│   │   ├── comments.py      # Comment-related classes
-│   │   └── captions.py      # Caption-related classes
-│   ├── handlers/            # Backend implementations
-│   │   ├── pytubefix_handler.py
-│   │   ├── yt_dlp_handler.py
-│   │   └── youtube_api_handler.py
-│   └── utils/               # Utility functions
-├── tests/                   # Test suite
-├── examples/                # Usage examples
-└── docs/                    # Documentation
-```
+See [CLAUDE.md](CLAUDE.md) for the architecture and layering
+(`sub_apis -> services -> handlers`) and how to add features, and
+[CHANGELOG.md](CHANGELOG.md) for version history. The public API is exactly the
+five sub-APIs; the old flat methods were removed in v2.0 (see
+[MIGRATION.md](MIGRATION.md)).
 
 ## Types of Contributions
 

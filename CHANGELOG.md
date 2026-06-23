@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-06-17
+
+### Deep-module refactor — services + 5 sub-APIs (BREAKING)
+
+This release finishes the deep-module decomposition and makes the five sub-APIs
+the single public surface.
+
+#### Changed (architecture)
+
+- **api.py is now a composition root.** The `YouTubeToolkit` god class was
+  decomposed into 9 domain services under `services/` (get_info, channel,
+  playlist, download, search, analyze, comments, captions, system). `api.py`
+  `__init__` now only wires handlers + services + the 5 sub-APIs together; the
+  only methods left on it are `extract_video_id` and `_sanitize_filename`.
+- **Sub-APIs call services directly** (`self._toolkit._<svc>.<method>`); services
+  own the handler-fallback. Layers: `sub_apis -> services -> handlers`.
+- The fallback decision is a single primitive, `core/fallback.run_with_fallback`.
+- `captions.py` was split into the `core/captions/` package (models / convert /
+  analytics).
+- **Adopted src layout.** The package moved from the repo root to
+  `src/youtube_toolkit/` so tests and examples run against the *installed*
+  package, not the cwd source tree. Import path (`import youtube_toolkit`) is
+  unchanged; only the on-disk location and the `pyproject.toml` packaging paths
+  moved.
+
+#### Removed (BREAKING)
+
+- **All ~100 flat `YouTubeToolkit` methods were removed** (`get_video_info`,
+  `download_audio`, `download_video`, `search_videos`, `advanced_search`,
+  `get_channel_info`, `get_sponsorblock_segments`, `get_heatmap`, `list_captions`,
+  …). The public API is now exactly the five sub-APIs (`get` / `download` /
+  `search` / `analyze` / `stream`) plus `extract_video_id`. See
+  [MIGRATION.md](MIGRATION.md) for the full flat-method → sub-API mapping.
+
+#### Added
+
+- **Parallel + async downloads** (opt-in, additive; default stays sequential):
+  `download.many(urls, max_workers=N)`, a `concurrent_fragments` option on the
+  yt-dlp handler, and async facades `download.audio_async` / `video_async` /
+  `many_async`. Parallel paths still respect the thread-safe rate limiter.
+- **`DictAccessMixin` on result dataclasses** (`core/dict_access.py`). `VideoInfo`,
+  `DownloadResult`, `SearchResult`, `CommentResult`, and `CaptionResult` now
+  support read-only dict-style access (`result['title']`, `result.get('title')`,
+  `'title' in result`, `dict(result)`) in addition to attribute access, so code
+  that previously consumed dict returns keeps working after the return became a
+  typed dataclass.
+- **Truthful return annotations on secondary sub-API methods.** `get.comments`,
+  `get.captions`, `analyze.comments`, and `analyze.captions` now declare their
+  real return types (`CommentResult` / `CaptionResult`) instead of the stale
+  `Dict[str, Any]`; runtime behavior is unchanged (these already returned the
+  dataclass).
+
+#### Compatibility notes
+
+- Returns that are now typed dataclasses are **not** `dict` subclasses:
+  `isinstance(result, dict)` is `False`, and `json.dumps(result)` will fail —
+  use `result.to_dict()` (or `json.dumps(result.to_dict())`) for serialization.
+- `DictAccessMixin` covers **read-only** mapping access only. Mutating/unpacking
+  dict semantics (`pop`, `update`, `del`, `len`, `**result`) are intentionally
+  not provided.
+
 ## [1.0.0] - 2024-11-27
 
 ### Added - Consolidated API with 5 Core Sub-APIs

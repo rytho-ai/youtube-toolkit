@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from typing import Optional
 from pathlib import Path
 
+from .dict_access import DictAccessMixin
+
 
 @dataclass
-class DownloadResult:
+class DownloadResult(DictAccessMixin):
     """Standardized download result structure."""
     
     file_path: str

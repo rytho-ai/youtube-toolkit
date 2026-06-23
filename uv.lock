@@ -1883,7 +1883,7 @@ wheels = [
 
 [[package]]
 name = "youtube-toolkit"
-version = "1.0.0"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1894,6 +1894,7 @@ dependencies = [
     { name = "pytubefix" },
     { name = "requests" },
     { name = "rich" },
+    { name = "scrapetube" },
     { name = "yt-dlp" },
 ]
 
@@ -1904,7 +1905,6 @@ all = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "scrapetube" },
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-rtd-theme" },
@@ -1920,9 +1920,6 @@ docs = [
     { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sphinx", version = "8.2.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-rtd-theme" },
-]
-scrapers = [
-    { name = "scrapetube" },
 ]
 
 [package.dev-dependencies]
@@ -1945,15 +1942,14 @@ requires-dist = [
     { name = "pytubefix", specifier = ">=8.0.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=13.0.0" },
-    { name = "scrapetube", marker = "extra == 'scrapers'", specifier = ">=2.6.0" },
+    { name = "scrapetube", specifier = ">=2.6.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=4.0" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=1.0" },
     { name = "youtube-toolkit", extras = ["dev"], marker = "extra == 'all'" },
     { name = "youtube-toolkit", extras = ["docs"], marker = "extra == 'all'" },
-    { name = "youtube-toolkit", extras = ["scrapers"], marker = "extra == 'all'" },
     { name = "yt-dlp", specifier = ">=2024.1.0" },
 ]
-provides-extras = ["scrapers", "dev", "docs", "all"]
+provides-extras = ["dev", "docs", "all"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.3.5" }]

@@ -10,6 +10,8 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
+from .dict_access import DictAccessMixin
+
 
 class CommentOrder(Enum):
     """Comment ordering options."""
@@ -190,7 +192,7 @@ class CommentAnalytics:
 
 
 @dataclass
-class CommentResult:
+class CommentResult(DictAccessMixin):
     """Comprehensive comment result with pagination and analytics."""
     comments: List[Comment] = field(default_factory=list)
     total_results: int = 0

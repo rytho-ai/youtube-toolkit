@@ -647,7 +647,7 @@ class TestYouTubeToolkitChannelFeatures:
                     toolkit = YouTubeToolkit()
                     toolkit.pytubefix = mock_handler
 
-                    result = toolkit.get_channel_videos("@Fireship", limit=50)
+                    result = toolkit.get.channel.videos("@Fireship", limit=50)
 
                     mock_handler.get_channel_videos.assert_called_once()
                     assert result == sample_channel_videos
@@ -665,7 +665,7 @@ class TestYouTubeToolkitChannelFeatures:
                     toolkit = YouTubeToolkit()
                     toolkit.pytubefix = mock_handler
 
-                    result = toolkit.get_channel_info("@Fireship")
+                    result = toolkit.get.channel("@Fireship")
 
                     assert result['channel_name'] == 'Fireship'
 
@@ -682,7 +682,7 @@ class TestYouTubeToolkitChannelFeatures:
                     toolkit = YouTubeToolkit()
                     toolkit.pytubefix = mock_handler
 
-                    result = toolkit.get_video_chapters("https://youtube.com/watch?v=test")
+                    result = toolkit.get.chapters("https://youtube.com/watch?v=test")
 
                     assert len(result) == 3
                     assert result[0]['title'] == 'Introduction'
@@ -704,7 +704,7 @@ class TestYouTubeToolkitChannelFeatures:
                     toolkit = YouTubeToolkit()
                     toolkit.pytubefix = mock_handler
 
-                    result = toolkit.search_with_filters(
+                    result = toolkit.search.with_filters(
                         "python",
                         duration='medium',
                         upload_date='month'
@@ -733,7 +733,7 @@ class TestYouTubeToolkitChannelFeatures:
                     toolkit = YouTubeToolkit()
                     toolkit.pytubefix = mock_handler
 
-                    result = toolkit.get_playlist_info("https://youtube.com/playlist?list=PLxxxxxxx")
+                    result = toolkit.get.playlist("https://youtube.com/playlist?list=PLxxxxxxx")
 
                     assert result['title'] == 'Python Tutorials'
                     assert result['video_count'] == 50

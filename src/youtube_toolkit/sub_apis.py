@@ -1,18 +1,22 @@
 """
-Sub-API classes for action-based API design.
+sub_apis.py — action-based sub-API facades (★ load-bearing).
 
-This module provides the five core action APIs (v1.0 consolidated):
+The five user-facing action APIs (v1.0 consolidated) plus channel/playlist/
+comments helpers:
 - GetAPI: Retrieve information (video, channel, playlist, etc.)
-- DownloadAPI: Save content to disk (audio, video, captions)
+- DownloadAPI: Save content to disk (audio, video, captions); async facades
+  (audio_async/...) and the parallel many() live here too
 - SearchAPI: Find content (videos, channels, playlists)
 - AnalyzeAPI: Analyze content (metadata, engagement, sponsorblock)
 - StreamAPI: Stream content to buffer and manage live streams
 
-Each sub-API is callable for smart defaults and has explicit methods for control.
+Each sub-API is callable for smart defaults and has explicit methods for control,
+and returns the same types as the legacy API (download() -> DownloadResult,
+search() -> SearchResult). Every method routes through api.py (YouTubeToolkit),
+never calling handlers directly, so fallback / rate-limit / logging stay
+centralized in one place.
 
-The callable methods return the same types as the legacy API for backward compatibility:
-- download() returns DownloadResult
-- search() returns SearchResult
+Reads: youtube_toolkit.api.YouTubeToolkit (back-ref) · core dataclasses
 """
 
 from typing import Optional, List, Dict, Any, Union, TYPE_CHECKING
@@ -20,6 +24,8 @@ import os
 import time
 
 from .core.video_info import VideoInfo
+from .core.comments import CommentResult
+from .core.captions import CaptionResult
 
 if TYPE_CHECKING:
     from .api import YouTubeToolkit
@@ -46,7 +52,7 @@ class ChannelGetAPI:
         Returns:
             Channel metadata dict
         """
-        return self._toolkit.pytubefix.get_channel_info(channel)
+        return self._toolkit._channel.get_channel_info(channel)
 
     def videos(self, channel: str,
                limit: Optional[int] = None,
@@ -64,17 +70,9 @@ class ChannelGetAPI:
         Returns:
             List of video info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_channel_videos(channel, limit=limit, sort_by=sort_by)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Using pytubefix.")
-
-        return self._toolkit.pytubefix.get_channel_videos(
-            channel, content_type='videos', limit=limit, sort_by=sort_by
+        return self._toolkit._channel.get_channel_videos(
+            channel, content_type='videos', limit=limit, sort_by=sort_by,
+            use_scrapetube=use_scrapetube
         )
 
     def shorts(self, channel: str,
@@ -91,17 +89,9 @@ class ChannelGetAPI:
         Returns:
             List of shorts info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_channel_shorts(channel, limit=limit)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Using pytubefix.")
-
-        return self._toolkit.pytubefix.get_channel_videos(
-            channel, content_type='shorts', limit=limit
+        return self._toolkit._channel.get_channel_videos(
+            channel, content_type='shorts', limit=limit,
+            use_scrapetube=use_scrapetube
         )
 
     def streams(self, channel: str,
@@ -118,17 +108,9 @@ class ChannelGetAPI:
         Returns:
             List of stream info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_channel_streams(channel, limit=limit)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Using pytubefix.")
-
-        return self._toolkit.pytubefix.get_channel_videos(
-            channel, content_type='live', limit=limit
+        return self._toolkit._channel.get_channel_videos(
+            channel, content_type='live', limit=limit,
+            use_scrapetube=use_scrapetube
         )
 
     def all_videos(self, channel: str,
@@ -146,24 +128,7 @@ class ChannelGetAPI:
         Raises:
             ImportError: If scrapetube is not installed
         """
-        try:
-            from .handlers.scrapetube_handler import ScrapeTubeHandler
-            handler = ScrapeTubeHandler()
-
-            if content_type == 'videos':
-                return handler.get_channel_videos(channel, limit=None)
-            elif content_type == 'shorts':
-                return handler.get_channel_shorts(channel, limit=None)
-            elif content_type == 'streams':
-                return handler.get_channel_streams(channel, limit=None)
-            else:
-                raise ValueError(f"Invalid content_type: {content_type}")
-
-        except ImportError:
-            raise ImportError(
-                "scrapetube is required for unlimited channel videos. "
-                "Install with: pip install youtube-toolkit[scrapers]"
-            )
+        return self._toolkit._channel.get_all_channel_videos(channel, content_type=content_type)
 
     def playlists(self, channel: str,
                   limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -177,7 +142,7 @@ class ChannelGetAPI:
         Returns:
             List of playlist info dicts
         """
-        return self._toolkit.pytubefix.get_channel_videos(
+        return self._toolkit._channel.get_channel_videos(
             channel, content_type='playlists', limit=limit
         )
 
@@ -199,7 +164,7 @@ class PlaylistGetAPI:
         Returns:
             Playlist metadata dict
         """
-        return self._toolkit.pytubefix.get_playlist_info(url)
+        return self._toolkit._playlist.get_playlist_info(url)
 
     def urls(self, url: str) -> List[str]:
         """
@@ -211,7 +176,7 @@ class PlaylistGetAPI:
         Returns:
             List of video URLs
         """
-        return self._toolkit.pytubefix.get_playlist_urls(url)
+        return self._toolkit._playlist.get_playlist_urls_pytubefix(url)
 
     def videos(self, url: str,
                limit: Optional[int] = None,
@@ -227,20 +192,9 @@ class PlaylistGetAPI:
         Returns:
             List of video info dicts
         """
-        if use_scrapetube:
-            try:
-                from .handlers.scrapetube_handler import ScrapeTubeHandler
-                handler = ScrapeTubeHandler()
-                return handler.get_playlist_videos(url, limit=limit)
-            except ImportError:
-                if self._toolkit.verbose:
-                    print("⚠️ scrapetube not installed. Getting URLs only.")
-
-        # Fallback: get URLs and fetch info for each
-        urls = self.urls(url)
-        if limit:
-            urls = urls[:limit]
-        return urls  # Return URLs, user can fetch details if needed
+        return self._toolkit._playlist.get_playlist_videos(
+            url, limit=limit, use_scrapetube=use_scrapetube
+        )
 
 
 class CommentsGetAPI:
@@ -252,7 +206,7 @@ class CommentsGetAPI:
 
     def __call__(self, url: str,
                  limit: int = 100,
-                 order: str = 'relevance') -> Dict[str, Any]:
+                 order: str = 'relevance') -> CommentResult:
         """
         Get comments from a video.
 
@@ -269,7 +223,7 @@ class CommentsGetAPI:
         order_enum = CommentOrder.RELEVANCE if order == 'relevance' else CommentOrder.TIME
         filters = CommentFilters(order=order_enum, max_results=limit)
 
-        return self._toolkit.comments(url, filters=filters)
+        return self._toolkit._comments.comments(url, filters=filters)
 
     def replies(self, url: str, comment_id: str,
                 limit: int = 50) -> List[Dict[str, Any]]:
@@ -284,7 +238,7 @@ class CommentsGetAPI:
         Returns:
             List of reply dicts
         """
-        return self._toolkit.youtube_api.fetch_replies(
+        return self._toolkit._comments.fetch_replies(
             self._toolkit.extract_video_id(url),
             comment_id,
             max_results=limit
@@ -306,7 +260,7 @@ class CommentsGetAPI:
         from .core.comments import CommentFilters
 
         filters = CommentFilters(search_terms=[query], max_results=limit)
-        result = self._toolkit.comments(url, filters=filters)
+        result = self._toolkit._comments.comments(url, filters=filters)
         return result.comments if hasattr(result, 'comments') else []
 
 
@@ -371,7 +325,7 @@ class GetAPI:
             VideoInfo dataclass with video details
         """
         # Get base info from handler
-        info = self._toolkit.pytubefix.get_video_info(url)
+        info = self._toolkit._get_info.get_video_info_pytubefix(url)
 
         # Map handler dict keys to VideoInfo fields
         video_info = VideoInfo(
@@ -391,31 +345,31 @@ class GetAPI:
         if include:
             if 'chapters' in include:
                 try:
-                    video_info.chapters = self._toolkit.pytubefix.get_video_chapters(url)
+                    video_info.chapters = self._toolkit._get_info.get_video_chapters(url)
                 except Exception:
                     video_info.chapters = []
 
             if 'heatmap' in include:
                 try:
-                    video_info.heatmap = self._toolkit.pytubefix.get_replayed_heatmap(url)
+                    video_info.heatmap = self._toolkit._analyze.get_replayed_heatmap(url)
                 except Exception:
                     video_info.heatmap = []
 
             if 'key_moments' in include:
                 try:
-                    video_info.key_moments = self._toolkit.pytubefix.get_key_moments(url)
+                    video_info.key_moments = self._toolkit._get_info.get_key_moments(url)
                 except Exception:
                     video_info.key_moments = []
 
             if 'transcript' in include:
                 try:
-                    video_info.transcript = self._toolkit.ytdlp.get_transcript(url)
+                    video_info.transcript = self._toolkit._get_info.get_transcript(url)
                 except Exception:
                     video_info.transcript = None
 
             if 'lyrics' in include:
                 try:
-                    video_info.lyrics = self._toolkit.ytdlp.get_lyrics(url)
+                    video_info.lyrics = self._toolkit._get_info.get_lyrics(url)
                 except Exception:
                     video_info.lyrics = None
 
@@ -431,7 +385,7 @@ class GetAPI:
         Returns:
             List of chapter dicts with title, start_seconds, formatted_start
         """
-        return self._toolkit.pytubefix.get_video_chapters(url)
+        return self._toolkit._get_info.get_video_chapters(url)
 
     def key_moments(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -443,7 +397,7 @@ class GetAPI:
         Returns:
             List of key moment dicts
         """
-        return self._toolkit.pytubefix.get_key_moments(url)
+        return self._toolkit._get_info.get_key_moments(url)
 
     def heatmap(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -455,7 +409,7 @@ class GetAPI:
         Returns:
             List of heatmap segments with intensity
         """
-        return self._toolkit.pytubefix.get_replayed_heatmap(url)
+        return self._toolkit._analyze.get_replayed_heatmap(url)
 
     def transcript(self, url: str, lang: str = 'en') -> Optional[str]:
         """
@@ -468,7 +422,7 @@ class GetAPI:
         Returns:
             Transcript text or None
         """
-        return self._toolkit.ytdlp.get_transcript(url)
+        return self._toolkit._get_info.get_transcript(url)
 
     def lyrics(self, url: str) -> Optional[str]:
         """
@@ -480,9 +434,9 @@ class GetAPI:
         Returns:
             Lyrics text or None
         """
-        return self._toolkit.ytdlp.get_lyrics(url)
+        return self._toolkit._get_info.get_lyrics(url)
 
-    def captions(self, url: str) -> Dict[str, Any]:
+    def captions(self, url: str) -> CaptionResult:
         """
         Get available caption tracks.
 
@@ -492,7 +446,7 @@ class GetAPI:
         Returns:
             CaptionResult with available tracks
         """
-        return self._toolkit.captions(url)
+        return self._toolkit._captions.captions(url)
 
     def metadata(self, url: str) -> Dict[str, Any]:
         """
@@ -504,7 +458,7 @@ class GetAPI:
         Returns:
             Rich metadata dict
         """
-        return self._toolkit.get_rich_metadata(url)
+        return self._toolkit._get_info.get_rich_metadata(url)
 
     def keywords(self, url: str) -> List[str]:
         """
@@ -516,7 +470,7 @@ class GetAPI:
         Returns:
             List of keywords/tags
         """
-        info = self._toolkit.pytubefix.get_video_info(url)
+        info = self._toolkit._get_info.get_video_info_pytubefix(url)
         return info.get('keywords', []) or []
 
     def formats(self, url: str) -> Dict[str, Any]:
@@ -529,7 +483,7 @@ class GetAPI:
         Returns:
             Dict with audio and video format options
         """
-        return self._toolkit.pytubefix.get_available_formats(url)
+        return self._toolkit._get_info.get_available_formats_pytubefix(url)
 
     def restriction(self, url: str) -> Dict[str, Any]:
         """
@@ -542,7 +496,7 @@ class GetAPI:
             Dict with age_restricted, is_private, is_unlisted, etc.
         """
         try:
-            info = self._toolkit.yt_dlp.get_full_metadata(url)
+            info = self._toolkit._get_info.get_full_metadata(url)
             return {
                 'age_restricted': info.get('age_limit', 0) > 0,
                 'age_limit': info.get('age_limit', 0),
@@ -689,7 +643,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded audio file
         """
-        return self._toolkit.download_audio(
+        return self._toolkit._download.download_audio(
             url,
             format=format,
             output_path=output_path,
@@ -716,7 +670,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded video file
         """
-        return self._toolkit.download_video(
+        return self._toolkit._download.download_video(
             url,
             quality=quality,
             output_path=output_path,
@@ -740,7 +694,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded caption file
         """
-        return self._toolkit.download_captions(
+        return self._toolkit._captions.download_captions(
             url,
             lang=lang,
             format=format,
@@ -814,7 +768,7 @@ class DownloadAPI:
         Returns:
             Dict with download results and summary
         """
-        return self._toolkit.download_playlist_media(
+        return self._toolkit._playlist.download_playlist_media(
             url,
             media_type=type,
             format=format,
@@ -838,7 +792,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.yt_dlp.download_short(url, output_path, format, with_audio)
+        return self._toolkit._download.download_short(url, output_path, format, with_audio)
 
     def live(self, url: str,
              output_path: Optional[str] = None,
@@ -856,7 +810,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.yt_dlp.download_live_stream(url, output_path, from_start, duration)
+        return self._toolkit._download.download_live_stream(url, output_path, from_start, duration)
 
     def with_sponsorblock(self, url: str,
                           output_path: Optional[str] = None,
@@ -874,7 +828,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.yt_dlp.download_with_sponsorblock(url, output_path, action, categories)
+        return self._toolkit._download.download_with_sponsorblock(url, output_path, action, categories)
 
     def with_metadata(self, url: str,
                       output_path: Optional[str] = None,
@@ -894,7 +848,7 @@ class DownloadAPI:
         Returns:
             Path to audio file
         """
-        return self._toolkit.yt_dlp.download_audio_with_metadata(
+        return self._toolkit._download.download_audio_with_metadata(
             url, output_path, format, embed_thumbnail, add_metadata
         )
 
@@ -923,7 +877,7 @@ class DownloadAPI:
         Returns:
             Path to downloaded file, or None if filtered out
         """
-        return self._toolkit.yt_dlp.download_with_filter(url, output_path, match_filter, format)
+        return self._toolkit._download.download_with_filter(url, output_path, match_filter, format)
 
     def with_archive(self, url: str,
                      output_path: Optional[str] = None,
@@ -941,7 +895,7 @@ class DownloadAPI:
         Returns:
             Path to file, or None if already in archive
         """
-        return self._toolkit.yt_dlp.download_with_archive(url, output_path, archive_file, format)
+        return self._toolkit._download.download_with_archive(url, output_path, archive_file, format)
 
     def with_cookies(self, url: str,
                      browser: str = 'chrome',
@@ -961,9 +915,79 @@ class DownloadAPI:
             Path to downloaded file
         """
         # Extract cookies and use them for download
-        cookies_file = self._toolkit.yt_dlp.extract_cookies_from_browser(browser)
-        return self._toolkit.yt_dlp.download_video(
+        cookies_file = self._toolkit._download.extract_cookies_from_browser(browser)
+        return self._toolkit._download.download_video_with_cookies(
             url, output_path=output_path, cookies=cookies_file
+        )
+
+    def many(self, urls, *, media_type: str = 'audio', max_workers: int = 1,
+             **kwargs) -> List[Dict[str, Any]]:
+        """
+        Download several videos at once (Phase 5 axis ②).
+
+        Conservative parallelism: ``max_workers=1`` (default) is sequential and
+        behaves exactly like calling ``audio``/``video`` per URL; ``max_workers>1``
+        fans out across a bounded thread pool. Every per-video download still goes
+        through the api layer, so handler fallback and the thread-safe rate limiter
+        keep pacing real requests under fan-out.
+
+        Args:
+            urls: Iterable of video URLs.
+            media_type: 'audio' or 'video'.
+            max_workers: Parallelism cap; <=1 = sequential.
+            **kwargs: Forwarded per-video options (format, quality, output_path,
+                bitrate, concurrent_fragments, prefer_yt_dlp, ...).
+
+        Returns:
+            List of dicts aligned to input order:
+            ``{'url', 'success', 'path', 'error'}``.
+        """
+        return self._toolkit._download.download_many(
+            urls, media_type=media_type, max_workers=max_workers, **kwargs
+        )
+
+    # --- Async facade (Phase 5 axis ③) ---
+    # Thin wrappers over the synchronous methods using a thread pool. async does
+    # NOT make any single download faster; it exists so a server/agent can serve
+    # multiple download requests without blocking the event loop.
+
+    async def audio_async(self, url, **kwargs):
+        """Async wrapper over :meth:`audio` (runs it in a thread executor).
+
+        Does not speed up a single download; lets callers ``await`` it without
+        blocking the event loop.
+        """
+        import asyncio
+        import functools
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self.audio, url, **kwargs)
+        )
+
+    async def video_async(self, url, **kwargs):
+        """Async wrapper over :meth:`video` (runs it in a thread executor).
+
+        Does not speed up a single download; lets callers ``await`` it without
+        blocking the event loop.
+        """
+        import asyncio
+        import functools
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self.video, url, **kwargs)
+        )
+
+    async def many_async(self, urls, **kwargs):
+        """Async wrapper over :meth:`many` (runs it in a thread executor).
+
+        Does not speed up downloads; lets callers ``await`` a multi-download
+        without blocking the event loop.
+        """
+        import asyncio
+        import functools
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self.many, urls, **kwargs)
         )
 
 
@@ -1008,7 +1032,7 @@ class SearchAPI:
         filters.max_results = max_results
 
         # Use existing advanced_search which returns dict
-        raw_result = self._toolkit.advanced_search(query, filters, max_results)
+        raw_result = self._toolkit._search.advanced_search(query, filters, max_results)
 
         # Convert to SearchResult
         items = []
@@ -1038,38 +1062,32 @@ class SearchAPI:
 
     def videos(self, query: str,
                limit: int = 20,
-               use_api: bool = False) -> List[Dict[str, Any]]:
+               use_api: bool = False,
+               sort_by: str = 'relevance') -> List[Dict[str, Any]]:
         """
         Search for videos.
+
+        One entry point for video search; the service picks the backend that
+        satisfies the request — you state intent, not mechanism:
+
+        - ``use_api=False`` (default): no key, no quota. Uses scrapetube
+          (honours ``sort_by``), falling back to pytubefix.
+        - ``use_api=True``: the YouTube Data API path (requires a key, uses
+          quota). ``sort_by`` is **not** applied here yet — API ordering is a
+          separate backlog item; pass it only with the no-API path for now.
 
         Args:
             query: Search query
             limit: Maximum results
-            use_api: Use YouTube API (requires API key, uses quota)
+            use_api: Use the YouTube Data API (requires key/quota)
+            sort_by: 'relevance', 'date', 'views', or 'rating' (no-API path only)
 
         Returns:
             List of video results
         """
         if use_api:
-            return self._toolkit.youtube_api.search_videos(query, max_results=limit)
-
-        # Try pytubefix first, then scrapetube
-        try:
-            results = self._toolkit.pytubefix.search_videos(query, max_results=limit)
-            if results:
-                return results
-        except Exception:
-            pass
-
-        # Fallback to scrapetube
-        try:
-            from .handlers.scrapetube_handler import ScrapeTubeHandler
-            handler = ScrapeTubeHandler()
-            return handler.search(query, limit=limit)
-        except ImportError:
-            pass
-
-        return []
+            return self._toolkit._search.search_videos_api(query, limit)
+        return self._toolkit._search.search_without_api(query, limit=limit, sort_by=sort_by)
 
     def channels(self, query: str,
                  limit: int = 20) -> List[Dict[str, Any]]:
@@ -1083,8 +1101,8 @@ class SearchAPI:
         Returns:
             List of channel results
         """
-        results = self._toolkit.pytubefix.advanced_search(
-            query, result_type='channel', max_results=limit
+        results = self._toolkit._search.advanced_search_native(
+            query, result_type='channel', limit=limit
         )
         return results.get('channels', [])
 
@@ -1100,8 +1118,8 @@ class SearchAPI:
         Returns:
             List of playlist results
         """
-        results = self._toolkit.pytubefix.advanced_search(
-            query, result_type='playlist', max_results=limit
+        results = self._toolkit._search.advanced_search_native(
+            query, result_type='playlist', limit=limit
         )
         return results.get('playlists', [])
 
@@ -1127,7 +1145,7 @@ class SearchAPI:
         Returns:
             Dict with videos, shorts, channels, playlists, completion_suggestions
         """
-        return self._toolkit.pytubefix.advanced_search(
+        return self._toolkit._search.search_with_filters(
             query=query,
             duration=duration,
             upload_date=upload_date,
@@ -1147,7 +1165,7 @@ class SearchAPI:
         Returns:
             List of suggested queries
         """
-        return self._toolkit.pytubefix.get_search_suggestions(query)
+        return self._toolkit._search.get_search_suggestions(query)
 
     @property
     def trending(self) -> 'TrendingSearchAPI':
@@ -1167,7 +1185,7 @@ class SearchAPI:
         Returns:
             List of category dictionaries with id, title, assignable
         """
-        return self._toolkit.youtube_api.get_video_categories(region, language)
+        return self._toolkit._search.get_video_categories(region, language)
 
     def regions(self, display_language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1179,7 +1197,7 @@ class SearchAPI:
         Returns:
             List of region dictionaries with code and name
         """
-        return self._toolkit.youtube_api.get_supported_regions(display_language)
+        return self._toolkit._system.get_supported_regions(display_language)
 
     def languages(self, display_language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1191,7 +1209,7 @@ class SearchAPI:
         Returns:
             List of language dictionaries with code and name
         """
-        return self._toolkit.youtube_api.get_supported_languages(display_language)
+        return self._toolkit._system.get_supported_languages(display_language)
 
 
 class TrendingSearchAPI:
@@ -1219,7 +1237,7 @@ class TrendingSearchAPI:
         Returns:
             Dictionary with trending videos
         """
-        return self._toolkit.youtube_api.get_trending_videos(region, category, max_results)
+        return self._toolkit._search.get_trending_videos(region, category, max_results)
 
     def by_category(self, region: str = 'US',
                     language: str = 'en') -> Dict[str, List[Dict[str, Any]]]:
@@ -1233,7 +1251,7 @@ class TrendingSearchAPI:
         Returns:
             Dictionary mapping category names to trending videos
         """
-        return self._toolkit.youtube_api.get_trending_by_category(region, language)
+        return self._toolkit._search.get_trending_by_category(region, language)
 
 
 # =============================================================================
@@ -1283,7 +1301,7 @@ class AnalyzeAPI:
         Returns:
             Dictionary with comprehensive metadata
         """
-        return self._toolkit.yt_dlp.get_full_metadata(url)
+        return self._toolkit._get_info.get_full_metadata(url)
 
     def engagement(self, url: str) -> Dict[str, Any]:
         """
@@ -1297,19 +1315,19 @@ class AnalyzeAPI:
         """
         result = {}
         try:
-            result['heatmap'] = self._toolkit.pytubefix.get_replayed_heatmap(url)
+            result['heatmap'] = self._toolkit._analyze.get_replayed_heatmap(url)
         except Exception:
             result['heatmap'] = []
 
         try:
-            result['key_moments'] = self._toolkit.pytubefix.get_key_moments(url)
+            result['key_moments'] = self._toolkit._get_info.get_key_moments(url)
         except Exception:
             result['key_moments'] = []
 
         return result
 
     def comments(self, url: str, max_comments: int = 100,
-                 sort: str = 'relevance') -> Dict[str, Any]:
+                 sort: str = 'relevance') -> CommentResult:
         """
         Get video comments with analytics.
 
@@ -1326,9 +1344,9 @@ class AnalyzeAPI:
         order = CommentOrder.RELEVANCE if sort == 'relevance' else CommentOrder.TIME
         filters = CommentFilters(order=order, max_results=max_comments)
 
-        return self._toolkit.comments(url, filters=filters)
+        return self._toolkit._comments.comments(url, filters=filters)
 
-    def captions(self, url: str) -> Dict[str, Any]:
+    def captions(self, url: str) -> CaptionResult:
         """
         Get caption/subtitle analysis.
 
@@ -1338,7 +1356,7 @@ class AnalyzeAPI:
         Returns:
             CaptionResult with available tracks and analytics
         """
-        return self._toolkit.captions(url)
+        return self._toolkit._captions.captions(url)
 
     def sponsorblock(self, url: str) -> List[Dict[str, Any]]:
         """
@@ -1355,7 +1373,7 @@ class AnalyzeAPI:
         Returns:
             List of segment dictionaries
         """
-        return self._toolkit.yt_dlp.get_sponsorblock_segments(url)
+        return self._toolkit._analyze.get_sponsorblock_segments(url)
 
     def channel(self, channel: str) -> Dict[str, Any]:
         """
@@ -1371,13 +1389,13 @@ class AnalyzeAPI:
         try:
             # Extract channel ID if needed
             if channel.startswith('@'):
-                return self._toolkit.youtube_api.get_channel_info(handle=channel)
+                return self._toolkit._channel.get_channel_info_full(handle=channel)
             elif channel.startswith('UC'):
-                return self._toolkit.youtube_api.get_channel_info(channel_id=channel)
+                return self._toolkit._channel.get_channel_info_full(channel_id=channel)
             else:
-                return self._toolkit.pytubefix.get_channel_info(channel)
+                return self._toolkit._channel.get_channel_info(channel)
         except Exception:
-            return self._toolkit.pytubefix.get_channel_info(channel)
+            return self._toolkit._channel.get_channel_info(channel)
 
     def filesize(self, url: str) -> Dict[str, Any]:
         """
@@ -1389,7 +1407,7 @@ class AnalyzeAPI:
         Returns:
             Dict with filesize info for best audio/video streams
         """
-        return self._toolkit.pytubefix.get_filesize_preview(url)
+        return self._toolkit._download.get_filesize_preview(url)
 
 
 # =============================================================================
@@ -1409,7 +1427,7 @@ class LiveStreamSubAPI:
         Returns:
             Dict with is_live, was_live, live_status, release_timestamp
         """
-        return self._toolkit.yt_dlp.get_live_status(url)
+        return self._toolkit._analyze.get_live_status(url)
 
     def is_live(self, url: str) -> bool:
         """
@@ -1439,7 +1457,7 @@ class LiveStreamSubAPI:
         Returns:
             Path to downloaded file
         """
-        return self._toolkit.yt_dlp.download_live_stream(url, output_path, from_start, duration)
+        return self._toolkit._download.download_live_stream(url, output_path, from_start, duration)
 
 
 class StreamAPI:
@@ -1471,7 +1489,7 @@ class StreamAPI:
         Returns:
             Bytes containing the stream data
         """
-        return self._toolkit.pytubefix.stream_to_buffer(url, stream_type, quality)
+        return self._toolkit._download.stream_to_buffer(url, stream_type, quality)
 
     def audio(self, url: str, quality: str = 'best') -> bytes:
         """
@@ -1484,7 +1502,7 @@ class StreamAPI:
         Returns:
             Bytes containing the audio data
         """
-        return self._toolkit.pytubefix.stream_to_buffer(url, 'audio', quality)
+        return self._toolkit._download.stream_to_buffer(url, 'audio', quality)
 
     def video(self, url: str, quality: str = 'best') -> bytes:
         """
@@ -1497,5 +1515,5 @@ class StreamAPI:
         Returns:
             Bytes containing the video data
         """
-        return self._toolkit.pytubefix.stream_to_buffer(url, 'video', quality)
+        return self._toolkit._download.stream_to_buffer(url, 'video', quality)
 

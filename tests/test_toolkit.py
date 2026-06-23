@@ -18,7 +18,7 @@ class TestYouTubeToolkitImport:
     def test_import_version(self):
         """Test that version is accessible."""
         from youtube_toolkit import __version__
-        assert __version__ == "1.0.0"
+        assert __version__ == "2.0.0"
 
     def test_import_core_classes(self):
         """Test that core classes can be imported."""
@@ -150,11 +150,13 @@ class TestSearchCategories:
     """Tests for search category retrieval."""
 
     def test_get_categories(self):
-        """Test getting search categories."""
-        from youtube_toolkit import YouTubeToolkit
-        toolkit = YouTubeToolkit()
+        """Test the static search-category mapping (public YOUTUBE_CATEGORIES)."""
+        # The legacy flat toolkit.get_search_categories() was removed in 2.0;
+        # its static name->id mapping now lives in the public YOUTUBE_CATEGORIES
+        # constant. (toolkit.search.categories() is the separate API-based variant.)
+        from youtube_toolkit import YOUTUBE_CATEGORIES
 
-        categories = toolkit.get_search_categories()
+        categories = YOUTUBE_CATEGORIES
         assert isinstance(categories, dict)
         assert "Music" in categories
         assert "Gaming" in categories

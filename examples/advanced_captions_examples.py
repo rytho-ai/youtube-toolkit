@@ -1,13 +1,28 @@
 """
 Advanced Captions Examples for YouTube Toolkit
 
-This file demonstrates the enhanced caption functionality with listing, filtering,
-format conversion, analysis, search, and comprehensive caption management.
+Migrated to the 2.0.0 sub-API surface. Caption *listing* now goes through
+``toolkit.get.captions(url)``, which returns a ``CaptionResult`` dataclass with:
+  - ``.tracks``           -> list of ``CaptionTrack`` objects (attribute access)
+  - ``.available_tracks`` -> only accessible tracks
+  - ``.quota_cost``       -> int
+
+Each ``CaptionTrack`` exposes ``.display_name``, ``.language``,
+``.language_code``, ``.track_type``, ``.status``, ``.is_auto_generated``,
+``.is_cc``, ``.is_manual``, ``.is_accessible``.
+
+NOTE: Several caption helpers were removed in 2.0 with no sub-API equivalent:
+``advanced_download_captions``, ``get_caption_analytics``, ``search_captions``,
+``export_captions``, ``get_best_caption_track``, ``get_captions_in_format``.
+The pure utility classes ``CaptionFormatConverter`` and ``CaptionAnalyzer`` are
+still importable and are demonstrated below on caption text you already have.
+
+To download captions to disk in 2.0, use ``toolkit.download.captions(url,
+lang='en', format='srt')`` which returns the output file path.
 """
 
 import os
-from datetime import datetime, timedelta
-from youtube_toolkit import YouTubeToolkit, CaptionFilters, CaptionFormatConverter, CaptionAnalyzer
+from youtube_toolkit import YouTubeToolkit, CaptionFormatConverter, CaptionAnalyzer
 
 
 def setup_toolkit():
@@ -16,155 +31,142 @@ def setup_toolkit():
 
 
 def example_caption_listing():
-    """Example 1: Caption Listing and Filtering."""
+    """Example 1: Caption Listing."""
     print("\n" + "="*70)
-    print("EXAMPLE 1: Caption Listing and Filtering")
+    print("EXAMPLE 1: Caption Listing")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # List all available captions
+
+    # List all available captions -> get.captions returns CaptionResult
     print("📋 Listing all available captions...")
-    caption_list = toolkit.list_captions("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-    
-    print(f"Total tracks: {caption_list.get('analytics', {}).get('total_tracks', 0)}")
-    print(f"Available tracks: {caption_list.get('analytics', {}).get('available_tracks', 0)}")
-    print(f"Quota cost: {caption_list.get('quota_cost', 0)} units")
-    
-    # Display caption tracks
-    tracks = caption_list.get('tracks', [])
-    for i, track in enumerate(tracks[:5], 1):
-        print(f"\n{i}. {track.get('display_name', 'Unknown')}")
-        print(f"   Language: {track.get('language_code', 'Unknown')}")
-        print(f"   Type: {track.get('track_type', 'Unknown')}")
-        print(f"   Status: {track.get('status', 'Unknown')}")
-        print(f"   Auto-generated: {track.get('is_auto_generated', False)}")
-        print(f"   CC: {track.get('is_cc', False)}")
-    
-    # Filter for manual captions only
-    print(f"\n🔍 Filtering for manual captions only...")
-    manual_filters = CaptionFilters(manual_only=True)
-    manual_list = toolkit.list_captions("https://www.youtube.com/watch?v=dQw4w9WgXcQ", manual_filters)
-    
-    print(f"Manual tracks: {len(manual_list.get('tracks', []))}")
-    
-    # Filter for specific languages
-    print(f"\n🌍 Filtering for English and Spanish...")
-    language_filters = CaptionFilters(language_codes=['en', 'es'])
-    language_list = toolkit.list_captions("https://www.youtube.com/watch?v=dQw4w9WgXcQ", language_filters)
-    
-    print(f"English/Spanish tracks: {len(language_list.get('tracks', []))}")
+    caption_result = toolkit.get.captions("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+    print(f"Total tracks: {len(caption_result.tracks)}")
+    print(f"Available tracks: {len(caption_result.available_tracks)}")
+    print(f"Quota cost: {caption_result.quota_cost} units")
+
+    # Display caption tracks (CaptionTrack objects -> attribute access)
+    for i, track in enumerate(caption_result.tracks[:5], 1):
+        print(f"\n{i}. {track.display_name}")
+        print(f"   Language: {track.language_code}")
+        print(f"   Type: {track.track_type}")
+        print(f"   Status: {track.status}")
+        print(f"   Auto-generated: {track.is_auto_generated}")
+        print(f"   CC: {track.is_cc}")
+
+    # NOTE: CaptionFilters(manual_only=...)/language filtering passed to
+    # list_captions was removed from the sub-API. Filter client-side instead.
+    print(f"\n🔍 Manual captions only (client-side filter)...")
+    manual_tracks = [t for t in caption_result.tracks if t.is_manual]
+    print(f"Manual tracks: {len(manual_tracks)}")
+
+    print(f"\n🌍 English/Spanish tracks (client-side filter)...")
+    lang_tracks = [t for t in caption_result.tracks if t.language_code in ('en', 'es')]
+    print(f"English/Spanish tracks: {len(lang_tracks)}")
 
 
 def example_caption_download():
-    """Example 2: Advanced Caption Download."""
+    """Example 2: Caption Download."""
     print("\n" + "="*70)
-    print("EXAMPLE 2: Advanced Caption Download")
+    print("EXAMPLE 2: Caption Download")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Download in different formats
+
+    # NOTE: `advanced_download_captions` (with rich analysis payload) was removed
+    # in 2.0. Use download.captions(url, lang=, format=) which returns the
+    # output file path.
     formats = ['srt', 'vtt', 'txt']
-    
+
     for format_type in formats:
         print(f"\n📥 Downloading captions in {format_type.upper()} format...")
         try:
-            result = toolkit.advanced_download_captions(
+            output_path = toolkit.download.captions(
                 "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                language_code='en',
-                format=format_type
+                lang='en',
+                format=format_type,
             )
-            
-            if result.get('success'):
-                print(f"✅ Downloaded: {result['output_path']}")
-                print(f"   Caption ID: {result['caption_id']}")
-                print(f"   Language: {result['language_code']}")
-                print(f"   Format: {result['format']}")
-                
-                # Show analysis
-                analysis = result.get('analysis', {})
-                print(f"   Duration: {analysis.get('total_duration', 0):.1f} seconds")
-                print(f"   Word count: {analysis.get('word_count', 0)}")
-                print(f"   Cue count: {analysis.get('cue_count', 0)}")
-                print(f"   Words per minute: {analysis.get('words_per_minute', 0):.1f}")
-            else:
-                print(f"❌ Failed: {result.get('error')}")
-                
+            print(f"✅ Downloaded: {output_path}")
         except Exception as e:
             print(f"❌ Error downloading {format_type}: {e}")
 
 
 def example_caption_analysis():
-    """Example 3: Caption Analysis and Insights."""
+    """Example 3: Caption Analysis from downloaded text."""
     print("\n" + "="*70)
     print("EXAMPLE 3: Caption Analysis and Insights")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Get caption analytics
-    print("📊 Getting caption analytics...")
+
+    # NOTE: `get_caption_analytics` was removed in 2.0. Download captions, then
+    # use CaptionFormatConverter + CaptionAnalyzer to derive insights locally.
+    print("📥 Downloading SRT captions for analysis...")
     try:
-        analytics = toolkit.get_caption_analytics("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-        
-        print(f"Total duration: {analytics.get('total_duration', 0):.1f} seconds")
-        print(f"Word count: {analytics.get('word_count', 0)}")
-        print(f"Cue count: {analytics.get('cue_count', 0)}")
-        print(f"Average cue duration: {analytics.get('average_cue_duration', 0):.1f} seconds")
-        print(f"Words per minute: {analytics.get('words_per_minute', 0):.1f}")
-        
-        # Language analysis
-        language_analysis = analytics.get('language_analysis', {})
-        if language_analysis:
-            print(f"\n🌍 Language Analysis:")
-            print(f"   Detected language: {language_analysis.get('detected_language', 'Unknown')}")
-            print(f"   Confidence: {language_analysis.get('confidence', 0):.2%}")
-        
+        srt_path = toolkit.download.captions(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            lang='en',
+            format='srt',
+        )
+
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            srt_content = f.read()
+
+        cues = CaptionFormatConverter.parse_srt(srt_content)
+        print(f"\n📊 Caption analysis ({len(cues)} cues):")
+
+        # Reading-speed insights via CaptionAnalyzer
+        reading_speed = CaptionAnalyzer.analyze_reading_speed(cues)
+        print(f"   Average WPM: {reading_speed.get('average_wpm', 0):.1f}")
+        print(f"   Total words: {reading_speed.get('total_words', 0)}")
+        print(f"   Total duration: {reading_speed.get('total_duration', 0):.1f}s")
+
         # Gap analysis
-        gaps = analytics.get('gaps', [])
+        gaps = CaptionAnalyzer.find_gaps(cues)
+        print(f"\n⏱️  Timing Gaps: {len(gaps)}")
         if gaps:
-            print(f"\n⏱️  Timing Gaps:")
-            print(f"   Total gaps: {len(gaps)}")
-            if gaps:
-                avg_gap = sum(gap['duration'] for gap in gaps) / len(gaps)
-                print(f"   Average gap: {avg_gap:.1f} seconds")
-                print(f"   Longest gap: {max(gap['duration'] for gap in gaps):.1f} seconds")
-        
+            avg_gap = sum(gap['duration'] for gap in gaps) / len(gaps)
+            print(f"   Average gap: {avg_gap:.1f} seconds")
+            print(f"   Longest gap: {max(gap['duration'] for gap in gaps):.1f} seconds")
+
     except Exception as e:
-        print(f"❌ Analytics failed: {e}")
+        print(f"❌ Analysis failed: {e}")
 
 
 def example_caption_search():
-    """Example 4: Caption Content Search."""
+    """Example 4: Caption Content Search (client-side)."""
     print("\n" + "="*70)
     print("EXAMPLE 4: Caption Content Search")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Search for specific terms
+
+    # NOTE: `search_captions` was removed in 2.0. Download the captions and
+    # search the parsed cues client-side.
+    print("📥 Downloading captions to search...")
+    try:
+        srt_path = toolkit.download.captions(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            lang='en',
+            format='srt',
+        )
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            cues = CaptionFormatConverter.parse_srt(f.read())
+    except Exception as e:
+        print(f"❌ Could not load captions: {e}")
+        return
+
     search_terms = ["never", "gonna", "give", "up"]
-    
     for term in search_terms:
         print(f"\n🔍 Searching for '{term}' in captions...")
-        try:
-            matches = toolkit.search_captions(
-                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                term,
-                language_code='en'
-            )
-            
-            print(f"Found {len(matches)} matches:")
-            for i, match in enumerate(matches[:3], 1):
-                print(f"  {i}. [{match['formatted_start']} - {match['formatted_end']}]")
-                print(f"     {match['text']}")
-            
-            if len(matches) > 3:
-                print(f"     ... and {len(matches) - 3} more matches")
-                
-        except Exception as e:
-            print(f"❌ Search failed: {e}")
+        matches = [c for c in cues if term.lower() in c.text.lower()]
+        print(f"Found {len(matches)} matches:")
+        for i, cue in enumerate(matches[:3], 1):
+            print(f"  {i}. [{cue.formatted_start} - {cue.formatted_end}]")
+            print(f"     {cue.text}")
+        if len(matches) > 3:
+            print(f"     ... and {len(matches) - 3} more matches")
 
 
 def example_caption_format_conversion():
@@ -172,260 +174,160 @@ def example_caption_format_conversion():
     print("\n" + "="*70)
     print("EXAMPLE 5: Caption Format Conversion")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Download SRT format
+
+    # Download SRT format, then convert with CaptionFormatConverter
     print("📥 Downloading SRT captions...")
     try:
-        srt_result = toolkit.advanced_download_captions(
+        srt_path = toolkit.download.captions(
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            language_code='en',
-            format='srt'
+            lang='en',
+            format='srt',
         )
-        
-        if srt_result.get('success'):
-            print(f"✅ SRT downloaded: {srt_result['output_path']}")
-            
-            # Read SRT content
-            with open(srt_result['output_path'], 'r', encoding='utf-8') as f:
-                srt_content = f.read()
-            
-            # Convert to different formats
-            print(f"\n🔄 Converting formats...")
-            
-            # Convert to VTT
-            vtt_content = CaptionFormatConverter.srt_to_vtt(srt_content)
-            print(f"✅ Converted to WebVTT format ({len(vtt_content)} characters)")
-            
-            # Convert to plain text
-            txt_content = CaptionFormatConverter.srt_to_txt(srt_content)
-            print(f"✅ Converted to plain text ({len(txt_content)} characters)")
-            
-            # Parse SRT into cues
-            cues = CaptionFormatConverter.parse_srt(srt_content)
-            print(f"✅ Parsed into {len(cues)} caption cues")
-            
-            # Show sample cues
-            print(f"\n📝 Sample caption cues:")
-            for i, cue in enumerate(cues[:3], 1):
-                print(f"  {i}. [{cue.formatted_start} - {cue.formatted_end}]")
-                print(f"     {cue.text}")
-                print(f"     Duration: {cue.duration:.1f}s")
-        
+        print(f"✅ SRT downloaded: {srt_path}")
+
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            srt_content = f.read()
+
+        print(f"\n🔄 Converting formats...")
+
+        # Convert to VTT
+        vtt_content = CaptionFormatConverter.srt_to_vtt(srt_content)
+        print(f"✅ Converted to WebVTT format ({len(vtt_content)} characters)")
+
+        # Convert to plain text
+        txt_content = CaptionFormatConverter.srt_to_txt(srt_content)
+        print(f"✅ Converted to plain text ({len(txt_content)} characters)")
+
+        # Parse SRT into cues
+        cues = CaptionFormatConverter.parse_srt(srt_content)
+        print(f"✅ Parsed into {len(cues)} caption cues")
+
+        # Show sample cues
+        print(f"\n📝 Sample caption cues:")
+        for i, cue in enumerate(cues[:3], 1):
+            print(f"  {i}. [{cue.formatted_start} - {cue.formatted_end}]")
+            print(f"     {cue.text}")
+            print(f"     Duration: {cue.duration:.1f}s")
+
     except Exception as e:
         print(f"❌ Format conversion failed: {e}")
 
 
 def example_caption_export():
-    """Example 6: Caption Export Functionality."""
+    """Example 6: Caption Export (via download in different formats)."""
     print("\n" + "="*70)
-    print("EXAMPLE 6: Caption Export Functionality")
+    print("EXAMPLE 6: Caption Export")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Export in different formats
-    export_formats = ['json', 'csv', 'vtt', 'txt']
-    
+
+    # NOTE: `export_captions` (json/csv) was removed in 2.0. Use
+    # download.captions to write supported subtitle formats to disk.
+    export_formats = ['srt', 'vtt', 'txt']
+
     for format_type in export_formats:
         print(f"\n📤 Exporting captions as {format_type.upper()}...")
         try:
-            export_path = toolkit.export_captions(
+            export_path = toolkit.download.captions(
                 "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                lang='en',
                 format=format_type,
-                language_code='en'
             )
-            
             print(f"✅ Exported to: {export_path}")
-            
-            # Show file size
             file_size = os.path.getsize(export_path)
             print(f"   File size: {file_size} bytes")
-            
-            # Show sample content for text formats
-            if format_type in ['vtt', 'txt']:
-                with open(export_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                print(f"   Sample content: {content[:100]}...")
-            
         except Exception as e:
             print(f"❌ Export failed: {e}")
 
 
 def example_best_caption_track():
-    """Example 7: Best Caption Track Selection."""
+    """Example 7: Best Caption Track Selection (client-side)."""
     print("\n" + "="*70)
     print("EXAMPLE 7: Best Caption Track Selection")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Get best caption track
+
+    # NOTE: `get_best_caption_track` was removed in 2.0. Pick a preferred track
+    # from get.captions() results client-side (prefer manual over auto-generated).
     print("🎯 Finding best caption track...")
     try:
-        best_track = toolkit.get_best_caption_track(
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            preferred_language='en'
+        caption_result = toolkit.get.captions(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         )
-        
-        if best_track:
+        preferred_language = 'en'
+
+        candidates = [t for t in caption_result.tracks
+                      if t.language_code == preferred_language and t.is_accessible]
+        # Prefer manual (human) tracks first, then any accessible track
+        candidates.sort(key=lambda t: t.is_auto_generated)
+
+        if candidates:
+            best = candidates[0]
             print(f"✅ Best track found:")
-            print(f"   Caption ID: {best_track['caption_id']}")
-            print(f"   Language: {best_track['language']} ({best_track['language_code']})")
-            print(f"   Name: {best_track['name']}")
-            print(f"   Type: {best_track['track_type']}")
-            print(f"   Status: {best_track['status']}")
-            print(f"   Auto-generated: {best_track['is_auto_generated']}")
-            print(f"   CC: {best_track['is_cc']}")
-            print(f"   Display name: {best_track['display_name']}")
+            print(f"   Language: {best.language} ({best.language_code})")
+            print(f"   Name: {best.name}")
+            print(f"   Type: {best.track_type}")
+            print(f"   Status: {best.status}")
+            print(f"   Auto-generated: {best.is_auto_generated}")
+            print(f"   CC: {best.is_cc}")
+            print(f"   Display name: {best.display_name}")
         else:
             print("❌ No suitable caption track found")
-    
     except Exception as e:
         print(f"❌ Best track selection failed: {e}")
 
 
-def example_caption_analytics_deep_dive():
-    """Example 8: Deep Dive Caption Analytics."""
-    print("\n" + "="*70)
-    print("EXAMPLE 8: Deep Dive Caption Analytics")
-    print("="*70)
-    
-    toolkit = setup_toolkit()
-    
-    # Get comprehensive analytics
-    print("📊 Comprehensive caption analytics...")
-    try:
-        result = toolkit.advanced_download_captions(
-            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            language_code='en',
-            format='srt'
-        )
-        
-        if result.get('success'):
-            analysis = result['analysis']
-            content = result['content']
-            
-            print(f"\n📈 Basic Statistics:")
-            print(f"   Total duration: {analysis['total_duration']:.1f} seconds")
-            print(f"   Word count: {analysis['word_count']}")
-            print(f"   Cue count: {analysis['cue_count']}")
-            print(f"   Average cue duration: {analysis['average_cue_duration']:.1f} seconds")
-            print(f"   Words per minute: {analysis['words_per_minute']:.1f}")
-            
-            # Reading speed analysis
-            reading_speed = CaptionAnalyzer.analyze_reading_speed(content.cues)
-            print(f"\n📖 Reading Speed Analysis:")
-            print(f"   Average WPM: {reading_speed['average_wpm']:.1f}")
-            print(f"   Average cue duration: {reading_speed['average_cue_duration']:.1f}s")
-            print(f"   Total words: {reading_speed['total_words']}")
-            print(f"   Total duration: {reading_speed['total_duration']:.1f}s")
-            
-            # Gap analysis
-            gaps = CaptionAnalyzer.find_gaps(content.cues)
-            print(f"\n⏱️  Gap Analysis:")
-            print(f"   Total gaps: {len(gaps)}")
-            if gaps:
-                gap_durations = [gap['duration'] for gap in gaps]
-                print(f"   Average gap: {sum(gap_durations) / len(gap_durations):.1f}s")
-                print(f"   Shortest gap: {min(gap_durations):.1f}s")
-                print(f"   Longest gap: {max(gap_durations):.1f}s")
-            
-            # Language analysis
-            language_analysis = CaptionAnalyzer.analyze_language(content.raw_content)
-            print(f"\n🌍 Language Analysis:")
-            print(f"   Detected language: {language_analysis['detected_language']}")
-            print(f"   Confidence: {language_analysis['confidence']:.2%}")
-            print(f"   Word counts by language: {language_analysis['word_counts']}")
-            
-            # Cue distribution analysis
-            cue_durations = [cue.duration for cue in content.cues]
-            print(f"\n📊 Cue Distribution:")
-            print(f"   Shortest cue: {min(cue_durations):.1f}s")
-            print(f"   Longest cue: {max(cue_durations):.1f}s")
-            print(f"   Median duration: {sorted(cue_durations)[len(cue_durations)//2]:.1f}s")
-            
-            # Word frequency analysis
-            all_text = ' '.join([cue.text for cue in content.cues]).lower()
-            words = all_text.split()
-            word_freq = {}
-            for word in words:
-                word_freq[word] = word_freq.get(word, 0) + 1
-            
-            # Top 10 most common words
-            top_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:10]
-            print(f"\n🔤 Top 10 Most Common Words:")
-            for i, (word, count) in enumerate(top_words, 1):
-                print(f"   {i}. '{word}': {count} times")
-        
-    except Exception as e:
-        print(f"❌ Deep dive analytics failed: {e}")
-
-
 def example_caption_filtering_advanced():
-    """Example 9: Advanced Caption Filtering."""
+    """Example 8: Advanced Caption Filtering (client-side)."""
     print("\n" + "="*70)
-    print("EXAMPLE 9: Advanced Caption Filtering")
+    print("EXAMPLE 8: Advanced Caption Filtering")
     print("="*70)
-    
+
     toolkit = setup_toolkit()
-    
-    # Test different filter combinations
+
+    # NOTE: CaptionFilters passed to list_captions was removed from the sub-API.
+    # Fetch once with get.captions, then filter the CaptionTrack list locally.
+    try:
+        caption_result = toolkit.get.captions(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        )
+    except Exception as e:
+        print(f"❌ Could not list captions: {e}")
+        return
+
+    tracks = caption_result.tracks
+
     filter_tests = [
-        {
-            'name': 'Auto-generated only',
-            'filters': CaptionFilters(auto_generated_only=True)
-        },
-        {
-            'name': 'Manual captions only',
-            'filters': CaptionFilters(manual_only=True)
-        },
-        {
-            'name': 'CC captions only',
-            'filters': CaptionFilters(cc_only=True)
-        },
-        {
-            'name': 'Accessible captions only',
-            'filters': CaptionFilters(accessible_only=True)
-        },
-        {
-            'name': 'English and Spanish',
-            'filters': CaptionFilters(language_codes=['en', 'es'])
-        }
+        ('Auto-generated only', [t for t in tracks if t.is_auto_generated]),
+        ('Manual captions only', [t for t in tracks if t.is_manual]),
+        ('CC captions only', [t for t in tracks if t.is_cc]),
+        ('Accessible captions only', [t for t in tracks if t.is_accessible]),
+        ('English and Spanish', [t for t in tracks if t.language_code in ('en', 'es')]),
     ]
-    
-    for test in filter_tests:
-        print(f"\n🔍 Testing: {test['name']}")
-        try:
-            result = toolkit.list_captions(
-                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-                test['filters']
-            )
-            
-            tracks = result.get('tracks', [])
-            print(f"   Found {len(tracks)} tracks")
-            
-            for track in tracks[:2]:  # Show first 2 tracks
-                print(f"   - {track.get('display_name', 'Unknown')} ({track.get('language_code', 'Unknown')})")
-                print(f"     Type: {track.get('track_type', 'Unknown')}, Status: {track.get('status', 'Unknown')}")
-        
-        except Exception as e:
-            print(f"   ❌ Filter test failed: {e}")
+
+    for name, filtered in filter_tests:
+        print(f"\n🔍 Testing: {name}")
+        print(f"   Found {len(filtered)} tracks")
+        for track in filtered[:2]:
+            print(f"   - {track.display_name} ({track.language_code})")
+            print(f"     Type: {track.track_type}, Status: {track.status}")
 
 
 def main():
     """Run all advanced caption examples."""
     print("YouTube Toolkit - Advanced Captions Examples")
     print("=" * 70)
-    
+
     # Check if API key is available
     if not os.getenv("YOUTUBE_API_KEY"):
         print("⚠️  Warning: YOUTUBE_API_KEY not set. Some features may not work.")
         print("   Set your API key: export YOUTUBE_API_KEY='your_api_key_here'")
         print("   Get API key from: https://console.developers.google.com/")
         print()
-    
+
     try:
         example_caption_listing()
         example_caption_download()
@@ -434,24 +336,25 @@ def main():
         example_caption_format_conversion()
         example_caption_export()
         example_best_caption_track()
-        example_caption_analytics_deep_dive()
         example_caption_filtering_advanced()
-        
+
         print("\n" + "="*70)
         print("All advanced caption examples completed successfully!")
         print("="*70)
-        
+
         print("\n🎯 Key Features Demonstrated:")
-        print("  ✅ Caption listing and filtering")
-        print("  ✅ Advanced caption download with format conversion")
-        print("  ✅ Caption analytics and insights")
-        print("  ✅ Caption content search")
-        print("  ✅ Format conversion (SRT, VTT, TXT)")
-        print("  ✅ Caption export (JSON, CSV, formats)")
-        print("  ✅ Best caption track selection")
-        print("  ✅ Deep dive analytics")
-        print("  ✅ Advanced filtering options")
-        
+        print("  ✅ Caption listing (get.captions)")
+        print("  ✅ Caption download (download.captions)")
+        print("  ✅ Local caption analysis (CaptionAnalyzer)")
+        print("  ✅ Client-side caption content search")
+        print("  ✅ Format conversion (CaptionFormatConverter)")
+        print("  ✅ Caption export via download in multiple formats")
+        print("  ✅ Best caption track selection (client-side)")
+        print("  ✅ Client-side caption filtering")
+        print("\nℹ️  Removed in 2.0 (no sub-API): advanced_download_captions,")
+        print("   get_caption_analytics, search_captions, export_captions,")
+        print("   get_best_caption_track, get_captions_in_format.")
+
     except Exception as e:
         print(f"\n❌ Error running examples: {e}")
         print("Make sure you have:")

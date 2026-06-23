@@ -1,14 +1,22 @@
 """
-Advanced Search Examples for YouTube Toolkit
+Advanced Search Examples for YouTube Toolkit (2.0 sub-API)
 
-This file demonstrates the enhanced search capabilities integrated from YouTube API v3,
-including thumbnails, live content detection, advanced filtering, and comprehensive results.
+This file demonstrates the search capabilities of the 2.0 search sub-API
+(toolkit.search), including advanced filtering and result inspection.
+
+NOTE (2.0 migration): The flat toolkit.advanced_search(...) method was removed.
+Searches now go through toolkit.search.with_filters(...) / toolkit.search.videos(...).
+The native search result dicts use the keys: 'title', 'watch_url', 'video_id',
+'author', 'length', 'views', 'publish_date', 'description'. Several API-based
+fields (thumbnails, live_broadcast_content, kind, total_results, quota_cost,
+backend_used) are no longer exposed by the native search sub-API.
 """
 
 import os
-from datetime import datetime, timedelta
 from youtube_toolkit import YouTubeToolkit
-from youtube_toolkit.core.search import SearchFilters, SearchResult
+# NOTE (2.0): SearchFilters / SearchResult dataclasses are still importable, but
+# the native search sub-API no longer consumes/produces them directly, so the
+# examples in this file build filters as keyword arguments to search.with_filters.
 
 
 def setup_toolkit():
@@ -21,26 +29,23 @@ def example_basic_advanced_search():
     print("\n" + "="*60)
     print("EXAMPLE 1: Basic Advanced Search")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Basic advanced search
-    results = toolkit.advanced_search("python programming tutorial")
-    
+
+    # Basic advanced search via the 2.0 search sub-API
+    results = toolkit.search.with_filters("python programming tutorial")
+
+    videos = results.get('videos', [])
     print(f"Query: 'python programming tutorial'")
-    print(f"Total results: {results.get('total_results', 0)}")
-    print(f"Items found: {len(results.get('items', []))}")
-    print(f"Backend used: {results.get('backend_used', 'unknown')}")
-    
+    print(f"Videos found: {len(videos)}")
+    # NOTE (2.0): per-item 'kind' / 'live_broadcast_content' / thumbnails removed.
+
     # Display first few results
-    for i, item in enumerate(results.get('items', [])[:3], 1):
+    for i, item in enumerate(videos[:3], 1):
         print(f"\n{i}. {item.get('title', 'No title')}")
-        print(f"   Channel: {item.get('channel_title', 'Unknown')}")
-        print(f"   Type: {item.get('kind', 'unknown')}")
-        print(f"   Live content: {item.get('live_broadcast_content', 'none')}")
-        if item.get('thumbnails'):
-            thumbnails = item['thumbnails']
-            print(f"   Thumbnails available: {[k for k, v in thumbnails.items() if v]}")
+        print(f"   Channel: {item.get('author', 'Unknown')}")
+        print(f"   URL: {item.get('watch_url', 'Unknown')}")
+        print(f"   Views: {item.get('views', 'Unknown')}")
 
 
 def example_search_with_filters():
@@ -48,37 +53,34 @@ def example_search_with_filters():
     print("\n" + "="*60)
     print("EXAMPLE 2: Search with Advanced Filters")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Create search filters
-    filters = SearchFilters(
-        type="video",  # Only videos
-        video_duration="medium",  # Medium length videos (4-20 minutes)
-        order="viewCount",  # Sort by view count
-        published_after=datetime.now() - timedelta(days=30),  # Last 30 days
-        video_definition="high",  # High definition only
-        safe_search="moderate"  # Moderate safety filter
+
+    # The 2.0 with_filters API takes keyword filters directly.
+    results = toolkit.search.with_filters(
+        "machine learning",
+        duration="medium",      # Medium length videos
+        upload_date="month",    # Last month
+        sort_by="views",        # Sort by view count
+        features=["hd"],        # High definition only
+        max_results=10,
     )
-    
-    results = toolkit.advanced_search("machine learning", filters, max_results=10)
-    
+
     print(f"Query: 'machine learning' with filters")
     print(f"Filters applied:")
-    print(f"  - Type: {filters.type}")
-    print(f"  - Duration: {filters.video_duration}")
-    print(f"  - Order: {filters.order}")
-    print(f"  - Published after: {filters.published_after}")
-    print(f"  - Definition: {filters.video_definition}")
-    print(f"  - Safe search: {filters.safe_search}")
-    
-    print(f"\nResults: {len(results.get('items', []))} items found")
-    
+    print(f"  - Duration: medium")
+    print(f"  - Upload date: month")
+    print(f"  - Sort by: views")
+    print(f"  - Features: ['hd']")
+
+    videos = results.get('videos', [])
+    print(f"\nResults: {len(videos)} videos found")
+
     # Display results with additional info
-    for i, item in enumerate(results.get('items', [])[:3], 1):
+    for i, item in enumerate(videos[:3], 1):
         print(f"\n{i}. {item.get('title', 'No title')}")
-        print(f"   Channel: {item.get('channel_title', 'Unknown')}")
-        print(f"   Published: {item.get('published_at', 'Unknown')}")
+        print(f"   Channel: {item.get('author', 'Unknown')}")
+        print(f"   Published: {item.get('publish_date', 'Unknown')}")
         print(f"   Video ID: {item.get('video_id', 'Unknown')}")
 
 
@@ -87,25 +89,20 @@ def example_live_content_search():
     print("\n" + "="*60)
     print("EXAMPLE 3: Live Content Search")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Search for live content
-    results = toolkit.advanced_search("gaming live stream")
-    
-    print(f"Query: 'gaming live stream'")
-    print(f"Total results: {results.get('total_results', 0)}")
-    
-    # Filter for live content
-    live_items = [item for item in results.get('items', []) 
-                  if item.get('live_broadcast_content') in ['live', 'upcoming']]
-    
-    print(f"Live/upcoming content: {len(live_items)} items")
-    
-    for i, item in enumerate(live_items[:3], 1):
+
+    # NOTE (2.0): per-item live_broadcast_content flags were removed. Live content
+    # is now filtered at the query level via features=['live'].
+    results = toolkit.search.with_filters("gaming live stream", features=["live"])
+
+    videos = results.get('videos', [])
+    print(f"Query: 'gaming live stream' (features=['live'])")
+    print(f"Live results found: {len(videos)}")
+
+    for i, item in enumerate(videos[:3], 1):
         print(f"\n{i}. {item.get('title', 'No title')}")
-        print(f"   Channel: {item.get('channel_title', 'Unknown')}")
-        print(f"   Status: {item.get('live_broadcast_content', 'none')}")
+        print(f"   Channel: {item.get('author', 'Unknown')}")
         print(f"   Video ID: {item.get('video_id', 'Unknown')}")
 
 
@@ -114,19 +111,22 @@ def example_channel_search():
     print("\n" + "="*60)
     print("EXAMPLE 4: Channel Search")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Search for channels
-    filters = SearchFilters(type="channel")
-    results = toolkit.advanced_search("tech review", filters, max_results=10)
-    
+
+    # In 2.0, channels come back under the 'channels' key of with_filters,
+    # or directly via search.channels(...).
+    results = toolkit.search.with_filters(
+        "tech review", result_type="channel", max_results=10
+    )
+
+    channels = results.get('channels', [])
     print(f"Query: 'tech review' channels")
-    print(f"Results: {len(results.get('items', []))} channels found")
-    
-    for i, item in enumerate(results.get('items', [])[:3], 1):
+    print(f"Results: {len(channels)} channels found")
+
+    for i, item in enumerate(channels[:3], 1):
         print(f"\n{i}. {item.get('title', 'No title')}")
-        print(f"   Channel ID: {item.get('channel_id', 'Unknown')}")
+        print(f"   Author: {item.get('author', 'Unknown')}")
         print(f"   Description: {item.get('description', 'No description')[:100]}...")
 
 
@@ -135,67 +135,46 @@ def example_thumbnail_management():
     print("\n" + "="*60)
     print("EXAMPLE 5: Thumbnail Management")
     print("="*60)
-    
+
+    # NOTE (2.0): Thumbnail metadata (default/medium/high/standard/maxres URLs and
+    # dimensions) is NOT exposed by the native search sub-API anymore. The previous
+    # thumbnail-availability analysis relied on the removed API-based search.
+    # Below we just run a normal search so main() stays runnable.
     toolkit = setup_toolkit()
-    
-    # Search for videos with thumbnails
-    results = toolkit.advanced_search("nature documentary")
-    
+
+    results = toolkit.search.with_filters("nature documentary")
+    videos = results.get('videos', [])
     print(f"Query: 'nature documentary'")
-    print(f"Results: {len(results.get('items', []))} items found")
-    
-    # Analyze thumbnails
-    thumbnail_summary = {"default": 0, "medium": 0, "high": 0, "standard": 0, "maxres": 0}
-    
-    for item in results.get('items', []):
-        thumbnails = item.get('thumbnails', {})
-        for quality in thumbnail_summary.keys():
-            if thumbnails.get(quality):
-                thumbnail_summary[quality] += 1
-    
-    print(f"\nThumbnail availability:")
-    for quality, count in thumbnail_summary.items():
-        print(f"  {quality}: {count} items")
-    
-    # Show thumbnail URLs for first result
-    first_item = results.get('items', [{}])[0]
-    if first_item.get('thumbnails'):
-        print(f"\nFirst result thumbnails:")
-        thumbnails = first_item['thumbnails']
-        for quality, thumbnail_data in thumbnails.items():
-            if thumbnail_data:
-                print(f"  {quality}: {thumbnail_data['url']} ({thumbnail_data['width']}x{thumbnail_data['height']})")
+    print(f"Results: {len(videos)} videos found")
+    print("Thumbnail metadata is not available via the 2.0 search sub-API.")
 
 
 def example_date_range_search():
-    """Example 6: Search within specific date range."""
+    """Example 6: Search within a recent upload window."""
     print("\n" + "="*60)
-    print("EXAMPLE 6: Date Range Search")
+    print("EXAMPLE 6: Recent Upload Search")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Search for videos from last week
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=7)
-    
-    filters = SearchFilters(
-        published_after=start_date,
-        published_before=end_date,
-        order="date",  # Sort by date
-        video_duration="short"  # Short videos only
+
+    # NOTE (2.0): explicit published_before/published_after date ranges were
+    # replaced by coarse upload_date buckets ('hour'/'today'/'week'/'month'/'year').
+    results = toolkit.search.with_filters(
+        "news",
+        upload_date="week",   # Last week
+        sort_by="date",       # Sort by date
+        duration="short",     # Short videos only
+        max_results=10,
     )
-    
-    results = toolkit.advanced_search("news", filters, max_results=10)
-    
-    print(f"Query: 'news' from last week")
-    print(f"Date range: {start_date.date()} to {end_date.date()}")
-    print(f"Results: {len(results.get('items', []))} items found")
-    
-    for i, item in enumerate(results.get('items', [])[:3], 1):
+
+    videos = results.get('videos', [])
+    print(f"Query: 'news' from the last week")
+    print(f"Results: {len(videos)} videos found")
+
+    for i, item in enumerate(videos[:3], 1):
         print(f"\n{i}. {item.get('title', 'No title')}")
-        print(f"   Channel: {item.get('channel_title', 'Unknown')}")
-        print(f"   Published: {item.get('published_at', 'Unknown')}")
+        print(f"   Channel: {item.get('author', 'Unknown')}")
+        print(f"   Published: {item.get('publish_date', 'Unknown')}")
 
 
 def example_comprehensive_search():
@@ -203,41 +182,33 @@ def example_comprehensive_search():
     print("\n" + "="*60)
     print("EXAMPLE 7: Comprehensive Search")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Comprehensive filters
-    filters = SearchFilters(
-        type="video",
-        video_duration="long",  # Long videos (>20 minutes)
-        video_definition="high",
-        video_caption="closedCaption",  # Must have captions
-        video_license="creativeCommon",  # Creative Commons license
-        order="rating",  # Sort by rating
-        region_code="US",  # US region
-        relevance_language="en",  # English language
-        safe_search="strict"  # Strict safety filter
+
+    # Combine several 2.0 filters at once. (Region/language/caption/license-level
+    # filters from the old API-based search are not part of the native sub-API;
+    # 'cc' and 'creative_commons' features are the closest equivalents.)
+    results = toolkit.search.with_filters(
+        "educational content",
+        duration="long",                         # Long videos
+        sort_by="rating",                        # Sort by rating
+        features=["hd", "cc", "creative_commons"],  # HD + captions + CC license
+        max_results=15,
     )
-    
-    results = toolkit.advanced_search("educational content", filters, max_results=15)
-    
+
     print(f"Query: 'educational content' with comprehensive filters")
     print(f"Filters:")
-    print(f"  - Duration: {filters.video_duration}")
-    print(f"  - Definition: {filters.video_definition}")
-    print(f"  - Captions: {filters.video_caption}")
-    print(f"  - License: {filters.video_license}")
-    print(f"  - Order: {filters.order}")
-    print(f"  - Region: {filters.region_code}")
-    print(f"  - Language: {filters.relevance_language}")
-    print(f"  - Safety: {filters.safe_search}")
-    
-    print(f"\nResults: {len(results.get('items', []))} items found")
-    
+    print(f"  - Duration: long")
+    print(f"  - Sort by: rating")
+    print(f"  - Features: ['hd', 'cc', 'creative_commons']")
+
+    videos = results.get('videos', [])
+    print(f"\nResults: {len(videos)} videos found")
+
     # Show detailed results
-    for i, item in enumerate(results.get('items', [])[:3], 1):
+    for i, item in enumerate(videos[:3], 1):
         print(f"\n{i}. {item.get('title', 'No title')}")
-        print(f"   Channel: {item.get('channel_title', 'Unknown')}")
+        print(f"   Channel: {item.get('author', 'Unknown')}")
         print(f"   Description: {item.get('description', 'No description')[:150]}...")
         print(f"   Video ID: {item.get('video_id', 'Unknown')}")
 
@@ -247,54 +218,50 @@ def example_search_result_analysis():
     print("\n" + "="*60)
     print("EXAMPLE 8: Search Result Analysis")
     print("="*60)
-    
+
     toolkit = setup_toolkit()
-    
-    # Perform search
-    results = toolkit.advanced_search("python tutorial")
-    
-    # Convert to SearchResult object for analysis
-    search_result = SearchResult.from_dict(results)
-    
+
+    # NOTE (2.0): The rich SearchResult analysis (thumbnails summary, live content
+    # counts, kind counts, SearchResult.from_dict over an 'items' list) relied on
+    # the removed API-based search. Here we analyze the plain list returned by
+    # search.videos() directly using len()/simple aggregation.
+    videos = toolkit.search.videos("python tutorial", limit=20)
+
     print(f"Query: 'python tutorial'")
-    print(f"Total results: {search_result.total_results}")
-    print(f"Items found: {search_result.count}")
-    print(f"Videos: {search_result.video_count}")
-    print(f"Channels: {search_result.channel_count}")
-    print(f"Playlists: {search_result.playlist_count}")
-    print(f"Live content: {search_result.live_content_count}")
-    
-    # Get thumbnails summary
-    thumbnail_summary = search_result.get_thumbnails_summary()
-    print(f"\nThumbnail summary: {thumbnail_summary}")
-    
-    # Filter by channel
-    channels = search_result.get_items_by_channel("TechWorld")
-    print(f"\nItems from 'TechWorld' channel: {len(channels)}")
-    
-    # Get live content
-    live_content = search_result.get_live_content()
-    print(f"Live content items: {len(live_content)}")
-    
-    # Sort by published date
-    recent_items = search_result.sort_by_published_date(reverse=True)[:3]
-    print(f"\nMost recent items:")
-    for i, item in enumerate(recent_items, 1):
-        print(f"  {i}. {item.title} ({item.published_at})")
+    print(f"Videos found: {len(videos)}")
+
+    # Count items per channel using the native 'author' key.
+    by_channel = {}
+    for item in videos:
+        author = item.get('author', 'Unknown')
+        by_channel[author] = by_channel.get(author, 0) + 1
+
+    print(f"Distinct channels: {len(by_channel)}")
+
+    # Show a few of the most prolific channels in this result set.
+    top_channels = sorted(by_channel.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    print(f"\nTop channels in results:")
+    for i, (author, count) in enumerate(top_channels, 1):
+        print(f"  {i}. {author}: {count} videos")
+
+    # Show first few titles.
+    print(f"\nFirst few results:")
+    for i, item in enumerate(videos[:3], 1):
+        print(f"  {i}. {item.get('title', 'No title')} ({item.get('publish_date', 'Unknown')})")
 
 
 def main():
     """Run all examples."""
     print("YouTube Toolkit - Advanced Search Examples")
     print("=" * 60)
-    
+
     # Check if API key is available
     if not os.getenv("YOUTUBE_API_KEY"):
         print("⚠️  Warning: YOUTUBE_API_KEY not set. Some features may not work.")
         print("   Set your API key: export YOUTUBE_API_KEY='your_api_key_here'")
         print("   Get API key from: https://console.developers.google.com/")
         print()
-    
+
     try:
         example_basic_advanced_search()
         example_search_with_filters()
@@ -304,11 +271,11 @@ def main():
         example_date_range_search()
         example_comprehensive_search()
         example_search_result_analysis()
-        
+
         print("\n" + "="*60)
         print("All examples completed successfully!")
         print("="*60)
-        
+
     except Exception as e:
         print(f"\n❌ Error running examples: {e}")
         print("Make sure you have:")
