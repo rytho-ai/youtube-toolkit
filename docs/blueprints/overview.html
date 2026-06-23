@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<!--
+  youtube-toolkit blueprints OVERVIEW — human-facing render of docs/blueprints/plan.md.
+  Generated from align's overview-template.html (single source); palette matched to docs/codebase-map/index.html.
+  One layer by status · click-to-reveal · bilingual. Regenerate via /shape:align — do not hand-edit content.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>youtube-toolkit — plan overview</title>
+<style>
+  /* palette matched to docs/codebase-map/index.html (parchment + emerald) */
+  :root{
+    --bg:#f7f4ec; --panel:#fffdf8; --ink:#2a211c;
+    --muted:#8a7d6e; --faint:#a99c8a; --line:#e7e0d2; --line-soft:#efe9dd;
+    --accent-deep:#b5894e;
+    --prog:#c2790f; --next:#10b981; --pend:#8a8175;
+    --shadow:0 1px 2px rgba(42,33,28,.04),0 12px 30px -18px rgba(42,33,28,.28);
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,monospace;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang TC','Microsoft JhengHei',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);background-image:radial-gradient(#d6d3d1 1px,transparent 1px);background-size:24px 24px;
+    color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased;padding:30px 30px 70px}
+  .wrap{max-width:1180px;margin:0 auto}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:6px}
+  h1{font-size:20px;font-weight:650}
+  h1 .mono{font-family:var(--mono);color:var(--accent-deep);font-size:17px}
+  .sub{color:var(--muted);font-size:12.5px;margin-top:6px;max-width:820px}
+  .sub b{color:var(--ink)}
+  .lang{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .lang button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:11.5px;padding:5px 12px;cursor:pointer}
+  .lang button.on{background:var(--ink);color:#fff;font-weight:700}
+
+  .board{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:22px;align-items:start}
+  @media(max-width:880px){.board{grid-template-columns:1fr}}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 16px 18px;box-shadow:var(--shadow);border-top:3px solid var(--accent)}
+  .col.prog{--accent:var(--prog)} .col.next{--accent:var(--next)} .col.pend{--accent:var(--pend)}
+  .col h2{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .col h2 .em{font-size:14px}
+  .col h2 .n{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .col .cnote{font-size:11.5px;color:var(--faint);margin:5px 0 13px}
+  .item{background:var(--bg);border:1px solid var(--line-soft);border-left:3px solid var(--accent);border-radius:9px;padding:10px 12px;margin-bottom:9px}
+  .item.has-d{cursor:pointer}
+  .item.has-d:hover{border-color:var(--accent)}
+  .thead{display:flex;align-items:flex-start;gap:8px}
+  .item .t{font-size:13px;font-weight:600;color:var(--ink);flex:1}
+  .chev{color:var(--faint);font-size:11px;line-height:1.4;transition:transform .15s;user-select:none}
+  .item.open .chev{transform:rotate(180deg)}
+  .item .d{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .item .detail{display:none;margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);font-size:12px;line-height:1.62;color:#3d342d}
+  .item.open .detail{display:block}
+  .item .detail b{color:var(--accent-deep);font-weight:600}
+  .item .detail .q{display:block;margin-top:6px;color:var(--prog);font-size:11.5px}
+  .item a{color:var(--next);text-decoration:none;border-bottom:1px solid rgba(16,185,129,.3)}
+  .item a:hover{border-bottom-color:var(--next)}
+  .item .ref{font-size:10.5px;font-family:var(--mono);margin-top:7px}
+
+  .shipped{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow);border-top:3px solid var(--next)}
+  .shipped h2{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .pills{display:flex;flex-wrap:wrap;gap:7px}
+  .pill{font-size:11.5px;color:var(--muted);background:var(--bg);border:1px solid var(--line-soft);border-radius:20px;padding:4px 11px}
+
+  .foot{margin-top:24px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:var(--faint)}
+  .foot a{font-family:var(--mono);font-size:11px;color:var(--muted);text-decoration:none;border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:5px 10px}
+  .foot a:hover{border-color:var(--accent-deep);color:var(--ink)}
+  .foot .lbl{color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="mono">youtube-toolkit/</span> <span data-t="title"></span></h1>
+      <div class="sub" data-t="sub"></div>
+    </div>
+    <div class="lang">
+      <button id="lzh" class="on" onclick="setLang('zh')">繁中</button>
+      <button id="len" onclick="setLang('en')">EN</button>
+    </div>
+  </header>
+
+  <div class="board" id="board"></div>
+
+  <div class="shipped">
+    <h2>✅ <span data-t="shippedH"></span></h2>
+    <div class="pills" id="pills"></div>
+  </div>
+
+  <div class="foot">
+    <span class="lbl" data-t="footLbl"></span>
+    <a href="plan.md">plan.md</a>
+    <a href="../plans/2026-06-17-nav-deep-module-refactor.md">plans/nav-deep-module-refactor.md</a>
+    <a href="../plans/2026-06-17-tier3-api-convergence-and-typing.md">plans/tier3-api-convergence.md</a>
+    <a href="../codebase-map/index.html">codebase-map</a>
+  </div>
+</div>
+
+<script>
+let lang="zh";
+const T={
+  title:{zh:"plan overview — 一層、按狀態",en:"plan overview — one layer, by status"},
+  sub:{zh:"人類看的現況快照。每張卡 = 做什麼,<b>點一下展開白話細節</b>。footer 連到 plan.md / grounded plans / codebase-map。<b>種子板</b>:由工作流 priming 實驗建立,第一次真的 <code>/shape:align</code> 會填實。",
+       en:"Human-facing snapshot. Each card = what to do; <b>click to expand</b>. Footer links plan.md / grounded plans / codebase-map. <b>Seeded board</b> from a workflow-priming experiment; the first real <code>/shape:align</code> fills it in."},
+  shippedH:{zh:"Shipped — 現況基線",en:"Shipped — current baseline"},
+  footLbl:{zh:"來源:",en:"sources:"},
+};
+const COLS=[
+  {key:"prog",cls:"prog",em:"🚧",h:{zh:"In progress · 現在做",en:"In progress"},
+   note:{zh:"v2.0 收斂,審查中",en:"v2.0 convergence, in review"},items:[
+    {t:{zh:"v2.0 重構 + src layout + uv-first",en:"v2.0 refactor + src layout + uv-first"},
+     d:{zh:"已在 branch refactor/nav-deep-module · PR #1 待審/合併",en:"on branch refactor/nav-deep-module · PR #1 awaiting review/merge"},
+     ref:{label:"plans/nav-deep-module",href:"../plans/2026-06-17-nav-deep-module-refactor.md"},
+     detail:{zh:"<b>已做</b>:god class 拆成 services/ · 5 sub-API 為唯一公開面 · fallback 收進 core/fallback.py · captions 拆 core/captions/ · opt-in 平行/async 下載 · <b>flat→src layout + uv 優先</b>(2026-06-23)。<span class='q'>待辦:PR #1 審查 → 合併。</span>",
+              en:"<b>Done</b>: god class → services/ · 5 sub-APIs as the only public surface · fallback in core/fallback.py · captions split · opt-in parallel/async downloads · <b>flat→src layout + uv-first</b> (2026-06-23). <span class='q'>Left: PR #1 review → merge.</span>"}},
+   ]},
+  {key:"next",cls:"next",em:"▶",h:{zh:"Next · 接下來",en:"Next"},
+   note:{zh:"打包/lint 現代化(setup python-lib archetype 點名)",en:"packaging/lint cleanup (flagged by the python-lib archetype)"},items:[
+    {t:{zh:"Lint → ruff, line-100",en:"Lint → ruff, line-100"},d:{zh:"丟掉 legacy black + flake8 + mypy@88",en:"drop legacy black + flake8 + mypy@88"},
+     detail:{zh:"目前還跑舊的 black/flake8/mypy@88;新慣例是 ruff line-100,且 ruff 要列進 dev dep 才不會「設定了沒裝」。",en:"Still on legacy black/flake8/mypy@88; the convention is ruff line-100, and ruff must be a declared dev dep ('configured ≠ installed')."}},
+    {t:{zh:"Ship py.typed",en:"Ship py.typed"},d:{zh:"這是 typed library,marker 目前缺",en:"typed library, marker currently missing"},
+     detail:{zh:"加 <code>src/youtube_toolkit/py.typed</code>,下游才吃得到型別。",en:"Add <code>src/youtube_toolkit/py.typed</code> so downstream gets the types."}},
+    {t:{zh:"收斂雙 dev-dep 表",en:"Collapse dual dev-dep tables"},d:{zh:"只留 [dependency-groups].dev",en:"keep [dependency-groups].dev only"},
+     detail:{zh:"同時有 <code>[project.optional-dependencies].dev</code> 和 <code>[dependency-groups].dev</code> = 同一件事兩個真相,會 drift。",en:"Carrying both <code>[project.optional-dependencies].dev</code> and <code>[dependency-groups].dev</code> = two truths for one thing, drifts."}},
+   ]},
+  {key:"pend",cls:"pend",em:"⏸",h:{zh:"Future · defer",en:"Future · deferred"},
+   note:{zh:"等真實需求",en:"build on real pull"},items:[
+    {t:{zh:"擴大 async 面",en:"Widen the async facade"},d:{zh:"目前只有 DownloadAPI 有 *_async",en:"only DownloadAPI has *_async today"},
+     detail:{zh:"其他 sub-API 還沒 async 包裝;有消費者真的要再做。",en:"Other sub-APIs have no async wrappers yet; widen only when a consumer needs it."}},
+   ]},
+];
+const SHIPPED={
+  zh:["src layout + uv-first (6/23)","v2.0 flat-method 移除 → 5 sub-APIs","dict-相容 dataclass 回傳","opt-in 平行/async 下載","v1.0 deep-module 重構","… 更早 — 見 plan.md / CHANGELOG"],
+  en:["src layout + uv-first (6/23)","v2.0 flat-method removal → 5 sub-APIs","dict-compatible dataclass returns","opt-in parallel/async downloads","v1.0 deep-module refactor","… earlier — see plan.md / CHANGELOG"],
+};
+const tr=o=>o[lang];
+function render(){
+  document.querySelectorAll("[data-t]").forEach(el=>el.innerHTML=T[el.dataset.t][lang]);
+  document.getElementById("board").innerHTML=COLS.map(c=>`
+    <div class="col ${c.cls}">
+      <h2><span class="em">${c.em}</span> ${tr(c.h)} <span class="n">${c.items.length}</span></h2>
+      <div class="cnote">${tr(c.note)}</div>
+      ${c.items.map(it=>`<div class="item ${it.detail?"has-d":""}">
+        <div class="thead"><div class="t">${tr(it.t)}</div>${it.detail?`<span class="chev">⌄</span>`:""}</div>
+        ${tr(it.d)?`<div class="d">${tr(it.d)}</div>`:""}
+        ${it.ref?`<div class="ref">→ <a href="${it.ref.href}">${it.ref.label}</a></div>`:""}
+        ${it.detail?`<div class="detail">${tr(it.detail)}</div>`:""}
+      </div>`).join("")}
+    </div>`).join("");
+  document.getElementById("pills").innerHTML=SHIPPED[lang].map(s=>`<span class="pill">${s}</span>`).join("");
+}
+function setLang(l){lang=l;document.getElementById("lzh").classList.toggle("on",l==="zh");document.getElementById("len").classList.toggle("on",l==="en");document.documentElement.lang=l==="zh"?"zh-Hant":"en";render();}
+document.getElementById("board").addEventListener("click",e=>{
+  if(e.target.closest("a"))return;
+  const it=e.target.closest(".item.has-d");
+  if(it)it.classList.toggle("open");
+});
+render();
+</script>
+</body>
+</html>

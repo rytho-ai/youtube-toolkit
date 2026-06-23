@@ -207,6 +207,27 @@ src/youtube_toolkit/       # src layout: the package lives under src/, never at 
 - When adding new features, add corresponding tests
 - Mock at the handler level for unit tests
 
+<!-- shape:dev-workflow start -->
+## Dev workflow
+
+This project is driven by the **shape / nav** skill workflow. The planning board lives in `docs/blueprints/`; the codebase map and grounded plans already live under `docs/`.
+
+| You want to… | Verb |
+|---|---|
+| Decide what to work on next / refresh the board | `/shape:align` → `docs/blueprints/plan.md` + `overview.html` |
+| Scope a feature against the actual code | `/nav:plan` → `docs/plans/` |
+| Implement a small decided change | `/nav:do` |
+| Drive the in-progress board to done | `/shape:build` |
+| Behaviour-preserving structural move | `/nav:refactor` |
+| Re-sync file-top headers after restructuring | `/nav:sync` |
+| Regenerate the repo map | `/nav:map` → `docs/codebase-map/index.html` |
+| Audit architecture against the layer rules above | `/nav:audit` |
+
+**Standing pointers:** plan board = `docs/blueprints/plan.md` (agent) + `overview.html` (human) · grounded plans = `docs/plans/` · repo map = `docs/codebase-map/index.html`.
+
+**Communication:** converse with the user in **Traditional Chinese (Taiwanese phrasing)**, plain and direct, with concrete analogies; keep code, identifiers, and commit messages in English.
+<!-- shape:dev-workflow end -->
+
 ## Version History
 
 - **v0.3**: Added channel support, chapters, advanced search
