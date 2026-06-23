@@ -578,6 +578,7 @@ class DownloadAPI:
                     format=format,
                     output_path=output_path,
                     bitrate=bitrate,
+                    prefer_yt_dlp=kwargs.get('prefer_yt_dlp', False),
                     progress_callback=progress,
                 )
                 backend_used = 'pytubefix/yt-dlp'

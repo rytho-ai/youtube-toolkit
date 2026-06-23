@@ -107,6 +107,10 @@ class PyTubeFixHandler:
             # Default save path
             if output_path is None:
                 output_path = os.path.join(os.getcwd(), f'{title}.{format}')
+            elif os.path.isdir(output_path) or not os.path.splitext(output_path)[1]:
+                # output_path is a directory (or extensionless) → name the file from
+                # the title so the ffmpeg target has a real extension.
+                output_path = os.path.join(output_path, f'{title}.{format}')
 
             out_dir, filename = os.path.split(output_path)
             os.makedirs(out_dir, exist_ok=True)  # Ensure directory exists

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "youtube-toolkit"
-version = "2.0.0"
+version = "2.0.1"
 description = "A comprehensive YouTube information and download toolkit combining multiple packages with robust download fallbacks"
 readme = "README.md"
 license = {text = "MIT"}

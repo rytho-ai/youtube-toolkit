@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-06-23
+
+### Fixed (download robustness — surfaced by consumer migration testing)
+
+- **`download(...)` callable now forwards `prefer_yt_dlp`.** The smart-download
+  callable accepted `**kwargs` but silently dropped `prefer_yt_dlp`, so
+  `toolkit.download(url, type='audio', prefer_yt_dlp=True)` never actually
+  preferred yt-dlp. It now reaches the audio path.
+- **pytubefix audio path honors a *directory* `output_path`.** The sub-API
+  documents `output_path` as "directory or file path", but the pytubefix/ffmpeg
+  branch fed a directory straight to ffmpeg as the output filename → no
+  extension → `ffmpeg` "Unable to choose an output format" → it fell back to
+  copying the raw file and returned the directory as `file_path` with
+  `success=True`. A directory (or extensionless) `output_path` now becomes
+  `<dir>/<title>.<format>`, so the conversion produces a real file.
+
 ## [2.0.0] - 2026-06-17
 
 ### Deep-module refactor — services + 5 sub-APIs (BREAKING)
