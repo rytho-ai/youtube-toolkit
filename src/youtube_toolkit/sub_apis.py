@@ -101,6 +101,7 @@ class ChannelGetAPI:
 
     def shorts(self, channel: str,
                limit: Optional[int] = None,
+               sort_by: str = 'newest',
                use_scrapetube: bool = False) -> List[Dict[str, Any]]:
         """
         Get shorts from a channel.
@@ -108,18 +109,20 @@ class ChannelGetAPI:
         Args:
             channel: Channel URL, handle, or ID
             limit: Maximum shorts to return
+            sort_by: 'newest', 'oldest', or 'popular'
             use_scrapetube: Use scrapetube for unlimited results
 
         Returns:
             List of shorts info dicts
         """
         return self._toolkit._channel.get_channel_videos(
-            channel, content_type='shorts', limit=limit,
+            channel, content_type='shorts', limit=limit, sort_by=sort_by,
             use_scrapetube=use_scrapetube
         )
 
     def streams(self, channel: str,
                 limit: Optional[int] = None,
+                sort_by: str = 'newest',
                 use_scrapetube: bool = False) -> List[Dict[str, Any]]:
         """
         Get live streams from a channel.
@@ -127,13 +130,14 @@ class ChannelGetAPI:
         Args:
             channel: Channel URL, handle, or ID
             limit: Maximum streams to return
+            sort_by: 'newest', 'oldest', or 'popular'
             use_scrapetube: Use scrapetube for unlimited results
 
         Returns:
             List of stream info dicts
         """
         return self._toolkit._channel.get_channel_videos(
-            channel, content_type='live', limit=limit,
+            channel, content_type='live', limit=limit, sort_by=sort_by,
             use_scrapetube=use_scrapetube
         )
 

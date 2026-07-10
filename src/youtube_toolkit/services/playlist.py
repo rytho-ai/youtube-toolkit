@@ -47,8 +47,12 @@ class PlaylistService:
 
     def get_playlist_videos(self, playlist_url: str,
                             limit: Optional[int] = None,
-                            use_scrapetube: bool = False) -> List[Any]:
-        """Playlist video details via scrapetube; else the playlist URLs (sliced)."""
+                            use_scrapetube: bool = False) -> List[Dict[str, Any]]:
+        """Playlist videos as dicts. `use_scrapetube=True` returns rich detail
+        dicts (title, views, ...) from scrapetube; otherwise a lightweight
+        ``{'url', 'video_id'}`` dict per video (from the cheap URL path). Always
+        a list of dicts — for bare URL strings use ``get.playlist.urls`` instead.
+        """
         if use_scrapetube:
             try:
                 from ..handlers.scrapetube_handler import ScrapeTubeHandler
@@ -59,7 +63,11 @@ class PlaylistService:
                     print("⚠️ scrapetube not installed. Getting URLs only.")
 
         urls = self.get_playlist_urls(playlist_url)
-        return urls[:limit] if limit else urls
+        urls = urls[:limit] if limit else urls
+        # Normalize to dicts so the return type is consistent regardless of the
+        # backend (the scrapetube path above returns dicts). Bare-URL callers
+        # have get_playlist_urls / get.playlist.urls for that.
+        return [{'url': u, 'video_id': self._toolkit.extract_video_id(u)} for u in urls]
 
     def download_playlist_media(self, playlist_url: str, media_type: str = 'audio',
                                format: str = 'wav', quality: str = 'best',

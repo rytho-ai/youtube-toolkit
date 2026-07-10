@@ -12,6 +12,21 @@ youtube_toolkit.handlers.scrapetube_handler (lazy import).
 from typing import Optional, List, Dict, Any
 
 
+def _sort_channel_items(items: List[Dict[str, Any]], sort_by: str) -> List[Dict[str, Any]]:
+    """Sort a list of channel item dicts, mirroring the pytubefix handler's
+    own logic so scrapetube-backed shorts/streams sort the same way:
+    'popular' → by views desc, 'oldest' → reverse the default newest-first
+    order, 'newest' (or anything else) → unchanged.
+    """
+    if not items:
+        return items
+    if sort_by == 'popular':
+        return sorted(items, key=lambda x: x.get('views', 0) or 0, reverse=True)
+    if sort_by == 'oldest':
+        return list(reversed(items))
+    return items
+
+
 class ChannelService:
     def __init__(self, toolkit):
         self._toolkit = toolkit
@@ -30,9 +45,16 @@ class ChannelService:
                 if content_type == 'videos':
                     return scrapetube.get_channel_videos(channel, limit=limit, sort_by=sort_by)
                 elif content_type == 'shorts':
-                    return scrapetube.get_channel_shorts(channel, limit=limit)
+                    # scrapetube's shorts/streams handlers take no sort_by, so
+                    # sort here to match the pytubefix path (which sorts all
+                    # content types) — keeps sort_by meaningful on both backends.
+                    return _sort_channel_items(
+                        scrapetube.get_channel_shorts(channel, limit=limit), sort_by
+                    )
                 elif content_type == 'live':
-                    return scrapetube.get_channel_streams(channel, limit=limit)
+                    return _sort_channel_items(
+                        scrapetube.get_channel_streams(channel, limit=limit), sort_by
+                    )
                 else:
                     # Fallback to pytubefix for playlists
                     return self._toolkit.pytubefix.get_channel_videos(channel, content_type, limit, sort_by)
