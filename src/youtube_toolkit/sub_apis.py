@@ -31,6 +31,30 @@ if TYPE_CHECKING:
     from .api import YouTubeToolkit
 
 
+def _parse_comment_order(order: str) -> 'CommentOrder':
+    """Map a user-facing order string to CommentOrder (case-insensitive).
+
+    Covers all three CommentOrder values ('relevance', 'time', 'rating') —
+    a previous ternary here only ever produced RELEVANCE or TIME, making
+    'rating' unreachable even though the enum supports it.
+    """
+    from .core.comments import CommentOrder
+
+    normalized = (order or '').strip().lower()
+    mapping = {
+        'relevance': CommentOrder.RELEVANCE,
+        'time': CommentOrder.TIME,
+        'rating': CommentOrder.RATING,
+    }
+    try:
+        return mapping[normalized]
+    except KeyError:
+        raise ValueError(
+            f"Invalid comment order {order!r}; expected one of "
+            f"{sorted(mapping.keys())}"
+        )
+
+
 # =============================================================================
 # GET API - Retrieve information
 # =============================================================================
@@ -213,15 +237,14 @@ class CommentsGetAPI:
         Args:
             url: Video URL
             limit: Maximum comments to return
-            order: 'relevance' or 'time'
+            order: 'relevance', 'time', or 'rating'
 
         Returns:
             CommentResult with comments and analytics
         """
-        from .core.comments import CommentFilters, CommentOrder
+        from .core.comments import CommentFilters
 
-        order_enum = CommentOrder.RELEVANCE if order == 'relevance' else CommentOrder.TIME
-        filters = CommentFilters(order=order_enum, max_results=limit)
+        filters = CommentFilters(order=_parse_comment_order(order), max_results=limit)
 
         return self._toolkit._comments.comments(url, filters=filters)
 
@@ -417,12 +440,13 @@ class GetAPI:
 
         Args:
             url: Video URL
-            lang: Language code
+            lang: Preferred language code (tried first; falls back to the
+                  handler's default preferred-language list if unavailable)
 
         Returns:
             Transcript text or None
         """
-        return self._toolkit._get_info.get_transcript(url)
+        return self._toolkit._get_info.get_transcript(url, lang=lang)
 
     def lyrics(self, url: str) -> Optional[str]:
         """
@@ -1335,15 +1359,14 @@ class AnalyzeAPI:
         Args:
             url: YouTube video URL
             max_comments: Maximum comments to retrieve
-            sort: 'relevance' or 'time'
+            sort: 'relevance', 'time', or 'rating'
 
         Returns:
             CommentResult with comments and analytics
         """
-        from .core.comments import CommentFilters, CommentOrder
+        from .core.comments import CommentFilters
 
-        order = CommentOrder.RELEVANCE if sort == 'relevance' else CommentOrder.TIME
-        filters = CommentFilters(order=order, max_results=max_comments)
+        filters = CommentFilters(order=_parse_comment_order(sort), max_results=max_comments)
 
         return self._toolkit._comments.comments(url, filters=filters)
 

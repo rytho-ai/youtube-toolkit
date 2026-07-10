@@ -456,25 +456,54 @@ class YTDLPHandler:
             return False
 
 
+    # Substrings that indicate YouTube is rate-limiting / IP-blocking
+    # transcript requests, rather than the video genuinely having no
+    # captions. Checked case-insensitively against the exception text.
+    _RATE_LIMIT_MARKERS = (
+        "blocking requests from your ip",
+        "too many requests",
+        "429",
+    )
+
     @anti_detection_interceptor
     @rate_limit(max_requests=5, window_minutes=1)
-    def get_transcript(self, url: str) -> Optional[str]:
+    def get_transcript(self, url: str, lang: Optional[str] = None) -> Optional[str]:
         """
         Get the transcript for a YouTube video using youtube-transcript-api.
-        
+
         Args:
             url: YouTube video URL or ID
-            
+            lang: Preferred language code to try first (e.g. 'es'). When
+                  given, it's tried before the hardcoded preferred-language
+                  list, but does not replace that fallback list — if the
+                  requested language isn't available, the existing behavior
+                  (try the hardcoded list, then any available transcript)
+                  still applies. When None, behavior is unchanged from
+                  before this parameter existed.
+
         Returns:
-            Transcript text if available, None otherwise
+            Transcript text if available, None otherwise.
+
+        Raises:
+            RateLimitedError: if YouTube appears to be rate-limiting /
+                IP-blocking transcript requests. Genuinely-absent captions
+                still return None rather than raising.
         """
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
-            
+
             # Extract video ID if full URL is provided
             video_id = self.extract_video_id(url) if self.is_valid_youtube_url(url) else url
-            
+
             preferred_languages = ['en', 'en-US', 'zh-TW', 'zh-Hant', 'de', 'fr', 'ja', 'ko']
+
+            # If a language was requested, try it first, then degrade to the
+            # existing hardcoded preference order (never hard-fail just
+            # because the requested language isn't available).
+            if lang:
+                ordered_languages = [lang] + [l for l in preferred_languages if l != lang]
+            else:
+                ordered_languages = preferred_languages
 
             # youtube-transcript-api >=1.0 replaced the `list_transcripts`
             # classmethod with an instance method `.list()`; `find_transcript`
@@ -484,9 +513,9 @@ class YTDLPHandler:
             transcript_list = YouTubeTranscriptApi().list(video_id)
 
             # First try to get a transcript in the preferred languages
-            for lang in preferred_languages:
+            for lang_code in ordered_languages:
                 try:
-                    transcript = transcript_list.find_transcript([lang])
+                    transcript = transcript_list.find_transcript([lang_code])
                     transcript_text = ''
                     for entry in transcript.fetch():
                         start = entry.start
@@ -506,11 +535,18 @@ class YTDLPHandler:
                     text = entry.text
                     transcript_text += f"[{start}-{start+duration}] {text}\n"
                 return transcript_text.strip()
-                
+
         except ImportError:
             print("youtube-transcript-api not installed. Install with: pip install youtube-transcript-api")
             return None
         except Exception as e:
+            message = str(e).lower()
+            if any(marker in message for marker in self._RATE_LIMIT_MARKERS):
+                from ..core.exceptions import RateLimitedError
+                raise RateLimitedError(
+                    "YouTube appears to be rate-limiting or blocking transcript "
+                    "requests from this IP. Try again later."
+                ) from e
             print(f"Failed to get transcript: {e}")
             return None
     

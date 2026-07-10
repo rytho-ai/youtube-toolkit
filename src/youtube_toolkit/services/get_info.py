@@ -110,8 +110,8 @@ class GetInfoService:
     def get_available_formats_pytubefix(self, url: str) -> Dict[str, Any]:
         return self._toolkit.pytubefix.get_available_formats(url)
 
-    def get_transcript(self, url: str) -> Any:
-        return self._toolkit.ytdlp.get_transcript(url)
+    def get_transcript(self, url: str, lang: str = None) -> Any:
+        return self._toolkit.ytdlp.get_transcript(url, lang=lang)
 
     def get_lyrics(self, url: str) -> Any:
         return self._toolkit.ytdlp.get_lyrics(url)

@@ -9,6 +9,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dotenv import load_dotenv
 
+from ..utils.helpers import redact_secrets
+
 
 def _load_env_files():
     """Load .env files from multiple locations."""
@@ -61,7 +63,7 @@ class YouTubeAPIHandler:
             except ImportError:
                 raise ImportError("google-api-python-client is not installed. Install with: uv add google-api-python-client")
             except Exception as e:
-                raise RuntimeError(f"Failed to initialize YouTube API: {e}")
+                raise RuntimeError(f"Failed to initialize YouTube API: {redact_secrets(e)}")
     
     def parse_url(self, video_url: str) -> str:
         """
@@ -127,7 +129,7 @@ class YouTubeAPIHandler:
             }
             
         except Exception as e:
-            return {"error": f"Failed to fetch metadata: {e}"}
+            return {"error": f"Failed to fetch metadata: {redact_secrets(e)}"}
     
     def search_videos(self, query: str, max_results: int = 20, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """
@@ -184,7 +186,7 @@ class YouTubeAPIHandler:
                     })
                     
                 except Exception as video_error:
-                    print(f"Warning: Failed to process search result: {video_error}")
+                    print(f"Warning: Failed to process search result: {redact_secrets(video_error)}")
                     continue
             
             return results
@@ -337,7 +339,7 @@ class YouTubeAPIHandler:
                 items.append(search_item)
 
             except Exception as item_error:
-                print(f"Warning: Failed to process search item: {item_error}")
+                print(f"Warning: Failed to process search item: {redact_secrets(item_error)}")
                 continue
 
         # Create comprehensive search result with quota information
@@ -417,7 +419,7 @@ class YouTubeAPIHandler:
 
         except Exception as e:
             # FIXED: Don't fall back - raise the error as requested by user
-            raise RuntimeError(f"Advanced search failed: {e}")
+            raise RuntimeError(f"Advanced search failed: {redact_secrets(e)}")
     
     def _parse_duration(self, duration: str) -> int:
         """
@@ -490,7 +492,7 @@ class YouTubeAPIHandler:
                 return []
                 
         except Exception as e:
-            print(f"❌ YouTube API playlist failed: {e}")
+            print(f"❌ YouTube API playlist failed: {redact_secrets(e)}")
             return []
     
     def get_playlist_info(self, playlist_url: str) -> Dict[str, Any]:
@@ -533,7 +535,7 @@ class YouTubeAPIHandler:
                 }
                 
         except Exception as e:
-            print(f"❌ YouTube API playlist info failed: {e}")
+            print(f"❌ YouTube API playlist info failed: {redact_secrets(e)}")
             return {
                 'title': 'YouTube Playlist',
                 'description': 'Playlist downloaded with YouTube Toolkit'
@@ -618,7 +620,7 @@ class YouTubeAPIHandler:
             return output_path
             
         except Exception as e:
-            raise RuntimeError(f"Failed to download captions with YouTube API: {e}")
+            raise RuntimeError(f"Failed to download captions with YouTube API: {redact_secrets(e)}")
     
     def advanced_list_captions(self, video_url: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """
@@ -722,7 +724,7 @@ class YouTubeAPIHandler:
                         language_counts[lang] = language_counts.get(lang, 0) + 1
                 
                 except Exception as track_error:
-                    print(f"Warning: Failed to process caption track: {track_error}")
+                    print(f"Warning: Failed to process caption track: {redact_secrets(track_error)}")
                     continue
             
             # Create analytics
@@ -746,10 +748,10 @@ class YouTubeAPIHandler:
             return result.to_dict()
             
         except Exception as e:
-            print(f"Advanced caption listing failed: {e}")
+            print(f"Advanced caption listing failed: {redact_secrets(e)}")
             return {
                 'tracks': [],
-                'error': str(e),
+                'error': redact_secrets(e),
                 'quota_cost': 50
             }
     
@@ -812,7 +814,10 @@ class YouTubeAPIHandler:
                 raw_content = caption_request.execute().decode('utf-8')
             except Exception as api_error:
                 # If YouTube API fails (e.g., requires OAuth2), fall back to other methods
-                raise RuntimeError(f"YouTube API caption download requires OAuth2 authentication. Error: {api_error}")
+                raise RuntimeError(
+                    f"YouTube API caption download requires OAuth2 authentication. "
+                    f"Error: {redact_secrets(api_error)}"
+                )
             
             # Parse SRT content
             cues = CaptionFormatConverter.parse_srt(raw_content)
@@ -990,7 +995,7 @@ class YouTubeAPIHandler:
             return sorted(threads, key=lambda x: x['likes'], reverse=True)
             
         except Exception as e:
-            print(f"Error fetching comments: {e}")
+            print(f"Error fetching comments: {redact_secrets(e)}")
             return []
     
     def _process_comment_threads(self, response, filters, video_id,
@@ -1079,7 +1084,7 @@ class YouTubeAPIHandler:
                     author_counts[author_name] = author_counts.get(author_name, 0) + 1
 
             except Exception as comment_error:
-                print(f"Warning: Failed to process comment: {comment_error}")
+                print(f"Warning: Failed to process comment: {redact_secrets(comment_error)}")
                 continue
 
         return comments, total_likes, total_replies, author_counts
@@ -1193,11 +1198,12 @@ class YouTubeAPIHandler:
             )
 
         except Exception as e:
-            print(f"Advanced comment fetch failed: {e}")
+            redacted_error = redact_secrets(e)
+            print(f"Advanced comment fetch failed: {redacted_error}")
             return {
                 'comments': [],
                 'total_results': 0,
-                'error': str(e),
+                'error': redacted_error,
                 'quota_cost': 1
             }
     
@@ -1258,7 +1264,7 @@ class YouTubeAPIHandler:
             return sorted(replies, key=lambda x: x['likes'], reverse=True)
             
         except Exception as e:
-            print(f"Error fetching replies: {e}")
+            print(f"Error fetching replies: {redact_secrets(e)}")
             return []
     
     def process_url_comments(self, video_url: str, top_n: int = 3, 
@@ -1387,7 +1393,7 @@ class YouTubeAPIHandler:
             }
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get channel subscriptions: {e}")
+            raise RuntimeError(f"Failed to get channel subscriptions: {redact_secrets(e)}")
 
     def check_subscription(self, channel_id: str, target_channel_id: str) -> Dict[str, Any]:
         """
@@ -1427,7 +1433,7 @@ class YouTubeAPIHandler:
                 }
 
         except Exception as e:
-            raise RuntimeError(f"Failed to check subscription: {e}")
+            raise RuntimeError(f"Failed to check subscription: {redact_secrets(e)}")
 
     # --- Video Categories API ---
 
@@ -1465,7 +1471,7 @@ class YouTubeAPIHandler:
             return categories
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get video categories: {e}")
+            raise RuntimeError(f"Failed to get video categories: {redact_secrets(e)}")
 
     def get_category_by_id(self, category_id: str,
                           language: str = 'en') -> Dict[str, Any]:
@@ -1500,7 +1506,7 @@ class YouTubeAPIHandler:
             return None
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get category by ID: {e}")
+            raise RuntimeError(f"Failed to get category by ID: {redact_secrets(e)}")
 
     # --- i18n Languages/Regions API ---
 
@@ -1534,7 +1540,7 @@ class YouTubeAPIHandler:
             return languages
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get supported languages: {e}")
+            raise RuntimeError(f"Failed to get supported languages: {redact_secrets(e)}")
 
     def get_supported_regions(self, language: str = 'en') -> List[Dict[str, Any]]:
         """
@@ -1566,7 +1572,7 @@ class YouTubeAPIHandler:
             return regions
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get supported regions: {e}")
+            raise RuntimeError(f"Failed to get supported regions: {redact_secrets(e)}")
 
     # --- Activities API ---
 
@@ -1643,7 +1649,7 @@ class YouTubeAPIHandler:
             }
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get channel activities: {e}")
+            raise RuntimeError(f"Failed to get channel activities: {redact_secrets(e)}")
 
     def get_recent_uploads(self, channel_id: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """
@@ -1680,7 +1686,7 @@ class YouTubeAPIHandler:
             return uploads
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get recent uploads: {e}")
+            raise RuntimeError(f"Failed to get recent uploads: {redact_secrets(e)}")
 
     # --- Trending/Popular Videos API ---
 
@@ -1751,7 +1757,7 @@ class YouTubeAPIHandler:
             }
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get trending videos: {e}")
+            raise RuntimeError(f"Failed to get trending videos: {redact_secrets(e)}")
 
     def get_trending_by_category(self, region_code: str = 'US',
                                  language: str = 'en') -> Dict[str, List[Dict[str, Any]]]:
@@ -1790,7 +1796,7 @@ class YouTubeAPIHandler:
             return trending_by_category
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get trending by category: {e}")
+            raise RuntimeError(f"Failed to get trending by category: {redact_secrets(e)}")
 
     # --- Channel Sections API ---
 
@@ -1844,7 +1850,7 @@ class YouTubeAPIHandler:
             return sections
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get channel sections: {e}")
+            raise RuntimeError(f"Failed to get channel sections: {redact_secrets(e)}")
 
     def get_channel_featured_channels(self, channel_id: str) -> List[Dict[str, Any]]:
         """
@@ -1869,7 +1875,7 @@ class YouTubeAPIHandler:
             return list(set(featured_channels))  # Remove duplicates
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get featured channels: {e}")
+            raise RuntimeError(f"Failed to get featured channels: {redact_secrets(e)}")
 
     # --- Enhanced Channel Info ---
 
@@ -1963,7 +1969,7 @@ class YouTubeAPIHandler:
             }
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get channel info: {e}")
+            raise RuntimeError(f"Failed to get channel info: {redact_secrets(e)}")
 
     def get_multiple_channels(self, channel_ids: List[str]) -> List[Dict[str, Any]]:
         """
@@ -2005,4 +2011,4 @@ class YouTubeAPIHandler:
             return channels
 
         except Exception as e:
-            raise RuntimeError(f"Failed to get multiple channels: {e}")
+            raise RuntimeError(f"Failed to get multiple channels: {redact_secrets(e)}")

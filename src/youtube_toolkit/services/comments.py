@@ -214,6 +214,11 @@ class CommentsService:
             next_page_token=raw_result.get('next_page_token'),
             filters_applied=filters,
             quota_cost=raw_result.get('quota_cost', 1),
+            # Propagate a fetch failure so callers can tell "the API call
+            # failed" apart from "this video genuinely has zero comments".
+            # The handler already redacts any API-key material before this
+            # ever lands in raw_result['error'].
+            error=raw_result.get('error'),
         )
 
     def get_comments_raw(self, url: str, max_comments: int = 100,

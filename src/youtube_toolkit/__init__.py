@@ -52,6 +52,7 @@ from .core import VideoInfo, DownloadResult, SearchResult, PostProcessorFactory
 from .core.search import SearchFilters, SearchResultItem, Thumbnails, Thumbnail, BooleanSearchQuery, YOUTUBE_CATEGORIES
 from .core.comments import CommentFilters, CommentResult, Comment, CommentAuthor, CommentMetrics, CommentAnalytics, CommentSentimentAnalyzer, CommentOrder
 from .core.captions import CaptionFilters, CaptionResult, CaptionTrack, CaptionContent, CaptionCue, CaptionAnalytics, CaptionFormatConverter, CaptionAnalyzer
+from .core.exceptions import TranscriptError, RateLimitedError
 
 # Make core classes available at package level for convenience
 __all__.extend([
@@ -61,5 +62,6 @@ __all__.extend([
     "CommentFilters", "CommentResult", "Comment", "CommentAuthor",
     "CommentMetrics", "CommentAnalytics", "CommentSentimentAnalyzer", "CommentOrder",
     "CaptionFilters", "CaptionResult", "CaptionTrack", "CaptionContent",
-    "CaptionCue", "CaptionAnalytics", "CaptionFormatConverter", "CaptionAnalyzer"
+    "CaptionCue", "CaptionAnalytics", "CaptionFormatConverter", "CaptionAnalyzer",
+    "TranscriptError", "RateLimitedError",
 ])

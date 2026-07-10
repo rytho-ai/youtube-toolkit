@@ -202,7 +202,8 @@ class CommentResult(DictAccessMixin):
     filters_applied: Optional[CommentFilters] = None
     analytics: Optional[CommentAnalytics] = None
     quota_cost: int = 1  # Comments API costs 1 unit per request
-    
+    error: Optional[str] = None  # Set when the underlying fetch failed; None means "no known failure" (still check total_results/comments for genuinely-zero-comments vs unfetched).
+
     @property
     def has_more_pages(self) -> bool:
         """Check if there are more pages available."""
@@ -284,6 +285,7 @@ class CommentResult(DictAccessMixin):
             'next_page_token': self.next_page_token,
             'prev_page_token': self.prev_page_token,
             'quota_cost': self.quota_cost,
+            'error': self.error,
             'analytics': {
                 'total_comments': self.analytics.total_comments if self.analytics else 0,
                 'total_replies': self.analytics.total_replies if self.analytics else 0,
