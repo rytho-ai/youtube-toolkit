@@ -40,6 +40,11 @@ dependencies = [
     "requests>=2.31.0",
     "rich>=13.0.0",
     "scrapetube>=2.6.0",
+    # Was a lazily-imported, undeclared soft-dependency of
+    # get.transcript(); declaring it now that yt_dlp_handler.py's
+    # get_transcript() targets its >=1.0 instance-based API (the
+    # pre-1.0 classmethod API no longer round-trips real captions).
+    "youtube-transcript-api>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -56,10 +61,18 @@ docs = [
     "sphinx>=4.0",
     "sphinx-rtd-theme>=1.0",
 ]
+# PO-token support for yt-dlp downloads that hit YouTube's bot-check (see
+# docs/po-token-setup.md). Opt-in: yt-dlp auto-detects this plugin once
+# installed, but it also needs a separate Node.js/Deno server running
+# (not managed by this package) — not worth making a hard dependency.
+po-token = [
+    "bgutil-ytdlp-pot-provider>=1.3.1",
+]
 # All optional dependencies
 all = [
     "youtube-toolkit[dev]",
     "youtube-toolkit[docs]",
+    "youtube-toolkit[po-token]",
 ]
 
 [project.urls]

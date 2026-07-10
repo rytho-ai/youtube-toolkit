@@ -9,6 +9,7 @@ import re
 from typing import Optional, Dict, Any, List
 from ..utils.helpers import ensure_directory
 from ..utils.anti_detection import AntiDetectionManager
+from ..utils.po_token_diagnostics import augment as _augment_po_token_hint
 from ..utils.request_interceptor import anti_detection_interceptor, rate_limit
 
 
@@ -102,7 +103,7 @@ class YTDLPHandler:
                     'video_url': url
                 }
         except Exception as e:
-            raise RuntimeError(f"Failed to get video info with yt-dlp: {e}")
+            raise RuntimeError(_augment_po_token_hint(f"Failed to get video info with yt-dlp: {e}", e))
     
     @anti_detection_interceptor
     @rate_limit(max_requests=3, window_minutes=1)
@@ -236,7 +237,9 @@ class YTDLPHandler:
                     continue
                 else:
                     # All format selectors failed
-                    raise ValueError(f"Failed to download audio with all format selectors. Last error: {e}")
+                    raise ValueError(_augment_po_token_hint(
+                        f"Failed to download audio with all format selectors. Last error: {e}", e
+                    ))
     
     @anti_detection_interceptor
     @rate_limit(max_requests=2, window_minutes=1)
@@ -365,7 +368,7 @@ class YTDLPHandler:
 
             raise ValueError("Video download failed: file is empty or not found")
         except Exception as e:
-            raise ValueError(f"Failed to download video: {e}")
+            raise ValueError(_augment_po_token_hint(f"Failed to download video: {e}", e))
     
     def get_video_description(self, url: str) -> str:
         """
@@ -472,30 +475,35 @@ class YTDLPHandler:
             video_id = self.extract_video_id(url) if self.is_valid_youtube_url(url) else url
             
             preferred_languages = ['en', 'en-US', 'zh-TW', 'zh-Hant', 'de', 'fr', 'ja', 'ko']
-            
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            
+
+            # youtube-transcript-api >=1.0 replaced the `list_transcripts`
+            # classmethod with an instance method `.list()`; `find_transcript`
+            # and `.fetch()` still exist on the result, but fetched entries
+            # are now attribute-access objects, not dicts (verified against
+            # v1.2.4 — pre-1.0 no longer round-trips real YouTube captions).
+            transcript_list = YouTubeTranscriptApi().list(video_id)
+
             # First try to get a transcript in the preferred languages
             for lang in preferred_languages:
                 try:
                     transcript = transcript_list.find_transcript([lang])
                     transcript_text = ''
                     for entry in transcript.fetch():
-                        start = entry['start']
-                        duration = entry['duration']
-                        text = entry['text']
+                        start = entry.start
+                        duration = entry.duration
+                        text = entry.text
                         transcript_text += f"[{start}-{start+duration}] {text}\n"
                     return transcript_text.strip()
                 except:
                     continue
-            
+
             # If no preferred language is available, get the first available transcript
             for transcript in transcript_list:
                 transcript_text = ''
                 for entry in transcript.fetch():
-                    start = entry['start']
-                    duration = entry['duration']
-                    text = entry['text']
+                    start = entry.start
+                    duration = entry.duration
+                    text = entry.text
                     transcript_text += f"[{start}-{start+duration}] {text}\n"
                 return transcript_text.strip()
                 
