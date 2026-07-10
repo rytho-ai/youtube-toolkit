@@ -64,6 +64,7 @@ class PlaylistService:
     def download_playlist_media(self, playlist_url: str, media_type: str = 'audio',
                                format: str = 'wav', quality: str = 'best',
                                include_captions: bool = False, audio_bitrate: str = '128k',
+                               output_path: Optional[str] = None,
                                max_workers: int = 1) -> Dict[str, Any]:
         import json
         import os
@@ -83,8 +84,10 @@ class PlaylistService:
         if not urls:
             return {'success': False, 'error': 'No videos found in playlist'}
 
-        # Create folder structure
-        base_dir = os.path.join(os.getcwd(), 'playlist_downloads')
+        # Create folder structure. Honor a caller-provided output_path (the
+        # DownloadAPI.playlist facade forwards it); default to a
+        # playlist_downloads/ dir under cwd when not given.
+        base_dir = output_path if output_path else os.path.join(os.getcwd(), 'playlist_downloads')
         playlist_dir = os.path.join(base_dir, self._toolkit._sanitize_filename(playlist_info['title']))
 
         folders = {
