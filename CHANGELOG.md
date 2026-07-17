@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-07-17
+
+### Fixed (yt-dlp progress-bar leak — surfaced by Ricercar's external MCP dogfood testing)
+
+- **`progress_callback=False` now also sets yt-dlp's `noprogress` option**,
+  fully silencing progress-bar output. Previously, `download.audio` /
+  `download.video`'s yt-dlp path only set `quiet: not progress_callback` —
+  but yt-dlp's raw `[download]  NN% ...` progress-bar lines are gated by a
+  *separate* option, `noprogress`, which `quiet` does not imply. So
+  `progress_callback=False` silenced yt-dlp's own logging but left the
+  progress bar writing straight to stdout. This matters for any embedding
+  context that shares its process's stdout with something else — e.g. a
+  stdio-based MCP server, where leaked progress-bar text interleaved with
+  JSON-RPC frames corrupts the wire protocol for any client parsing it.
+  `'noprogress': not progress_callback` is now set alongside `'quiet'` in
+  both `download_audio` and `download_video`'s yt-dlp options.
+
 ## [2.0.1] - 2026-06-23
 
 ### Fixed (download robustness — surfaced by consumer migration testing)

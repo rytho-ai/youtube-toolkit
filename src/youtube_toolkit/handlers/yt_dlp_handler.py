@@ -170,6 +170,7 @@ class YTDLPHandler:
             'postprocessors': [postprocessor_opts],
             'outtmpl': os.path.join(output_path, f'{video_id}.%(ext)s'),
             'quiet': not progress_callback,
+            'noprogress': not progress_callback,
             'no_warnings': True,
             # Add additional options for better compatibility
             'extract_flat': False,
@@ -291,6 +292,7 @@ class YTDLPHandler:
             'format': format_spec,
             'outtmpl': os.path.join(output_path, f'{video_id}.%(ext)s'),
             'quiet': not progress_callback,
+            'noprogress': not progress_callback,
             'no_warnings': True
         }
 

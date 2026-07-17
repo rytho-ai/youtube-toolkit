@@ -110,6 +110,61 @@ class TestAxisOneConcurrentFragments:
 
 
 # ---------------------------------------------------------------------------
+# noprogress — progress_callback=False must also silence yt-dlp's raw
+# `[download]  NN% ...` progress-bar lines, not just its `quiet` logging.
+# `quiet` does not imply `noprogress` in yt-dlp; both must be set together
+# so an embedding context sharing its stdout (e.g. a stdio MCP server)
+# doesn't get progress-bar text interleaved into its wire protocol.
+# ---------------------------------------------------------------------------
+
+class TestNoProgressOption:
+    def test_download_audio_sets_noprogress_when_silent(self, tmp_path):
+        handler = YTDLPHandler()
+        with _mock_ydl(handler) as captured:
+            audio_file = tmp_path / "dQw4w9WgXcQ.wav"
+            audio_file.write_bytes(b"x" * 16)
+            handler.download_audio(
+                "dQw4w9WgXcQ",
+                output_path=str(tmp_path),
+                format="wav",
+                progress_callback=False,
+            )
+        assert captured
+        assert captured[0].get("quiet") is True
+        assert captured[0].get("noprogress") is True
+
+    def test_download_audio_omits_noprogress_when_verbose(self, tmp_path):
+        handler = YTDLPHandler()
+        with _mock_ydl(handler) as captured:
+            audio_file = tmp_path / "dQw4w9WgXcQ.wav"
+            audio_file.write_bytes(b"x" * 16)
+            handler.download_audio(
+                "dQw4w9WgXcQ",
+                output_path=str(tmp_path),
+                format="wav",
+                progress_callback=True,
+            )
+        assert captured
+        assert captured[0].get("quiet") is False
+        assert captured[0].get("noprogress") is False
+
+    def test_download_video_sets_noprogress_when_silent(self, tmp_path):
+        handler = YTDLPHandler()
+        with _mock_ydl(handler) as captured:
+            video_file = tmp_path / "dQw4w9WgXcQ.mp4"
+            video_file.write_bytes(b"x" * 16)
+            handler.download_video(
+                "dQw4w9WgXcQ",
+                output_path=str(tmp_path),
+                quality="720p",
+                progress_callback=False,
+            )
+        assert captured
+        assert captured[0].get("quiet") is True
+        assert captured[0].get("noprogress") is True
+
+
+# ---------------------------------------------------------------------------
 # Axis ② — download_many fan-out
 # ---------------------------------------------------------------------------
 
