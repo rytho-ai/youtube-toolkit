@@ -2,13 +2,15 @@
 sub_apis.py — action-based sub-API facades (★ load-bearing).
 
 The five user-facing action APIs (v1.0 consolidated) plus channel/playlist/
-comments helpers:
+comments helpers, plus the OAuth-only `mine` facade:
 - GetAPI: Retrieve information (video, channel, playlist, etc.)
 - DownloadAPI: Save content to disk (audio, video, captions); async facades
   (audio_async/...) and the parallel many() live here too
 - SearchAPI: Find content (videos, channels, playlists)
 - AnalyzeAPI: Analyze content (metadata, engagement, sponsorblock)
 - StreamAPI: Stream content to buffer and manage live streams
+- MineAPI: OAuth-only current-user data (login/status/channel/playlists/
+  subscriptions) — the things an API key structurally cannot reach
 
 Each sub-API is callable for smart defaults and has explicit methods for control,
 and returns the same types as the legacy API (download() -> DownloadResult,
@@ -1544,4 +1546,95 @@ class StreamAPI:
             Bytes containing the video data
         """
         return self._toolkit._download.stream_to_buffer(url, 'video', quality)
+
+
+# =============================================================================
+# MINE API - OAuth-only current-user data (NEW)
+# =============================================================================
+
+class MineAPI:
+    """
+    MINE API - The authenticated user's OWN YouTube data. Requires OAuth.
+
+    An API key can read any PUBLIC channel/playlist by explicit id, but it
+    structurally cannot answer "what's MY channel/playlists/subscriptions" —
+    that requires the request to be made as an authorized user. This facade
+    is the only place that data surfaces.
+
+    Usage:
+        toolkit.mine.login()                # Run the OAuth login flow
+        toolkit.mine.status()                # {'logged_in': bool, 'token_path': str}
+        toolkit.mine()                       # Shortcut for .channel()
+        toolkit.mine.channel()               # My channel info
+        toolkit.mine.playlists()             # My playlists
+        toolkit.mine.subscriptions()         # My subscriptions
+
+    Calling `.channel()`/`.playlists()`/`.subscriptions()` while not logged
+    in raises `youtube_toolkit.handlers.youtube_api_handler.YouTubeAuthRequiredError`.
+    """
+
+    def __init__(self, toolkit: 'YouTubeToolkit'):
+        self._toolkit = toolkit
+
+    def __call__(self) -> Dict[str, Any]:
+        """Shortcut for :meth:`channel` — the most common "am I logged in, who am I" call."""
+        return self.channel()
+
+    def login(self):
+        """
+        Run the interactive Google OAuth login flow and persist the token.
+
+        Returns:
+            The resolved token file path (str).
+        """
+        return self._toolkit._mine.login()
+
+    def status(self) -> Dict[str, Any]:
+        """
+        Report OAuth login state (never includes token contents).
+
+        Returns:
+            Dict with 'logged_in' (bool) and 'token_path' (str)
+        """
+        return self._toolkit._mine.status()
+
+    def channel(self) -> Dict[str, Any]:
+        """
+        Get the current user's own channel info. Requires OAuth.
+
+        Returns:
+            Channel info dict (same shape as `toolkit.get.channel`)
+        """
+        return self._toolkit._mine.channel()
+
+    def playlists(self, max_results: int = 25,
+                  page_token: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get the current user's own playlists. Requires OAuth.
+
+        Args:
+            max_results: Maximum number of results (max 50)
+            page_token: Token for pagination
+
+        Returns:
+            Dict with 'playlists' list and pagination info
+        """
+        return self._toolkit._mine.playlists(max_results=max_results, page_token=page_token)
+
+    def subscriptions(self, max_results: int = 25, order: str = 'alphabetical',
+                      page_token: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get the current user's own subscriptions. Requires OAuth.
+
+        Args:
+            max_results: Maximum number of results (max 50)
+            order: Sort order ('alphabetical', 'relevance', 'unread')
+            page_token: Token for pagination
+
+        Returns:
+            Dict with 'subscriptions' list and pagination info
+        """
+        return self._toolkit._mine.subscriptions(
+            max_results=max_results, order=order, page_token=page_token
+        )
 

@@ -10,6 +10,17 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from ..utils.helpers import redact_secrets
+from .. import oauth
+
+
+class YouTubeAuthRequiredError(RuntimeError):
+    """Raised when an OAuth-only call (the ``mine=True`` methods) is made
+    without an active OAuth session.
+
+    A later CLI maps this to an exit-2 "run `youtube login`" human handoff
+    (see spotify-cli's exit-code convention) instead of letting a raw Google
+    400 ("Login Required") leak through.
+    """
 
 
 def _load_env_files():
@@ -45,25 +56,66 @@ class YouTubeAPIHandler:
         self._youtube = None
         self._initialized = False
         self._api_key = None
-    
+        self._auth_mode = None  # 'oauth' or 'apikey', set by _ensure_initialized
+
     def _ensure_initialized(self):
-        """Ensure YouTube API is available and initialized."""
+        """Ensure YouTube API is available and initialized.
+
+        Credential selection PREFERS OAuth over the API key when a valid
+        OAuth session exists, falling back to YOUTUBE_API_KEY, and raising a
+        clear error if neither is available. OAuth is a strict superset of
+        the API key for reads (it can do everything the key can, plus the
+        `mine=True` current-user calls the key structurally cannot reach),
+        so preferring it is correct and lets a user who has logged in drop
+        the API key entirely — that is an intended benefit, not just a
+        fallback order.
+        """
         if not self._initialized:
             try:
                 from googleapiclient.discovery import build
-                
+
+                creds = oauth.load_credentials()
+                if creds is not None:
+                    self._youtube = build('youtube', 'v3', credentials=creds)
+                    self._auth_mode = 'oauth'
+                    self._initialized = True
+                    return
+
                 # Get API key from environment
                 self._api_key = os.getenv("YOUTUBE_API_KEY")
                 if not self._api_key:
-                    raise ValueError("YOUTUBE_API_KEY environment variable is not set")
-                
+                    raise ValueError(
+                        "No YouTube credentials: set YOUTUBE_API_KEY, or run "
+                        "`youtube login` (OAuth)."
+                    )
+
                 self._youtube = build('youtube', 'v3', developerKey=self._api_key)
+                self._auth_mode = 'apikey'
                 self._initialized = True
-                
+
             except ImportError:
                 raise ImportError("google-api-python-client is not installed. Install with: uv add google-api-python-client")
+            except oauth.YouTubeOAuthError:
+                raise
+            except ValueError:
+                raise
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize YouTube API: {redact_secrets(e)}")
+
+    def _require_oauth(self):
+        """Guard for OAuth-only ('mine=True') methods.
+
+        Ensures the client is initialized, then raises YouTubeAuthRequiredError
+        BEFORE any network call if the active credentials are API-key-only —
+        the API key structurally cannot serve `mine=True` requests, so this
+        must be caught here rather than surfacing as a raw Google 400.
+        """
+        self._ensure_initialized()
+        if self._auth_mode != 'oauth':
+            raise YouTubeAuthRequiredError(
+                "This call requires OAuth (a logged-in user account). "
+                "Run `youtube login`, then retry."
+            )
     
     def parse_url(self, video_url: str) -> str:
         """
@@ -1335,6 +1387,51 @@ class YouTubeAPIHandler:
 
     # --- Subscriptions API ---
 
+    def _map_subscription_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Map a single `subscriptions().list()` response item to our dict shape.
+
+        Single owner of the subscriptions-API item -> dict mapping, shared by
+        `get_channel_subscriptions` (any public channel, by id) and
+        `get_my_subscriptions` (OAuth `mine=True`).
+        """
+        snippet = item.get('snippet', {})
+        content_details = item.get('contentDetails', {})
+        resource_id = snippet.get('resourceId', {})
+
+        return {
+            'subscription_id': item.get('id', ''),
+            'channel_id': resource_id.get('channelId', ''),
+            'channel_title': snippet.get('title', ''),
+            'channel_description': snippet.get('description', ''),
+            'channel_thumbnail': snippet.get('thumbnails', {}).get('default', {}).get('url', ''),
+            'subscribed_at': snippet.get('publishedAt', ''),
+            'total_item_count': content_details.get('totalItemCount', 0),
+            'new_item_count': content_details.get('newItemCount', 0),
+            'activity_type': content_details.get('activityType', ''),
+        }
+
+    def _list_subscriptions(self, params: Dict[str, Any], max_results: int) -> Dict[str, Any]:
+        """Shared `subscriptions().list()` call + response mapping.
+
+        Used by both `get_channel_subscriptions` (passes `channelId=...`) and
+        `get_my_subscriptions` (passes `mine=True`) — they differ only in
+        that one param, so the request/response handling lives here once.
+        """
+        response = self._youtube.subscriptions().list(**params).execute()
+
+        subscriptions = [
+            self._map_subscription_item(item) for item in response.get('items', [])
+        ]
+
+        return {
+            'subscriptions': subscriptions,
+            'total_results': response.get('pageInfo', {}).get('totalResults', len(subscriptions)),
+            'results_per_page': response.get('pageInfo', {}).get('resultsPerPage', max_results),
+            'next_page_token': response.get('nextPageToken'),
+            'prev_page_token': response.get('prevPageToken'),
+            'quota_cost': 1,
+        }
+
     def get_channel_subscriptions(self, channel_id: str, max_results: int = 50,
                                   order: str = 'relevance',
                                   page_token: str = None) -> Dict[str, Any]:
@@ -1363,37 +1460,48 @@ class YouTubeAPIHandler:
             if page_token:
                 params['pageToken'] = page_token
 
-            response = self._youtube.subscriptions().list(**params).execute()
-
-            subscriptions = []
-            for item in response.get('items', []):
-                snippet = item.get('snippet', {})
-                content_details = item.get('contentDetails', {})
-                resource_id = snippet.get('resourceId', {})
-
-                subscriptions.append({
-                    'subscription_id': item.get('id', ''),
-                    'channel_id': resource_id.get('channelId', ''),
-                    'channel_title': snippet.get('title', ''),
-                    'channel_description': snippet.get('description', ''),
-                    'channel_thumbnail': snippet.get('thumbnails', {}).get('default', {}).get('url', ''),
-                    'subscribed_at': snippet.get('publishedAt', ''),
-                    'total_item_count': content_details.get('totalItemCount', 0),
-                    'new_item_count': content_details.get('newItemCount', 0),
-                    'activity_type': content_details.get('activityType', ''),
-                })
-
-            return {
-                'subscriptions': subscriptions,
-                'total_results': response.get('pageInfo', {}).get('totalResults', len(subscriptions)),
-                'results_per_page': response.get('pageInfo', {}).get('resultsPerPage', max_results),
-                'next_page_token': response.get('nextPageToken'),
-                'prev_page_token': response.get('prevPageToken'),
-                'quota_cost': 1,
-            }
+            return self._list_subscriptions(params, max_results)
 
         except Exception as e:
             raise RuntimeError(f"Failed to get channel subscriptions: {redact_secrets(e)}")
+
+    def get_my_subscriptions(self, max_results: int = 25,
+                             order: str = 'alphabetical',
+                             page_token: str = None) -> Dict[str, Any]:
+        """
+        Get the CURRENT (logged-in) user's own subscriptions. Requires OAuth.
+
+        Same return shape as `get_channel_subscriptions` — the only
+        difference is `mine=True` instead of an explicit `channelId`.
+
+        Args:
+            max_results: Maximum number of results (max 50)
+            order: Sort order ('alphabetical', 'relevance', 'unread')
+            page_token: Token for pagination
+
+        Returns:
+            Dictionary with subscription data and pagination info
+
+        Raises:
+            YouTubeAuthRequiredError: if not logged in via OAuth.
+        """
+        self._require_oauth()
+
+        try:
+            params = {
+                'part': 'snippet,contentDetails',
+                'mine': True,
+                'maxResults': min(max_results, 50),
+                'order': order,
+            }
+
+            if page_token:
+                params['pageToken'] = page_token
+
+            return self._list_subscriptions(params, max_results)
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to get my subscriptions: {redact_secrets(e)}")
 
     def check_subscription(self, channel_id: str, target_channel_id: str) -> Dict[str, Any]:
         """
@@ -1917,59 +2025,68 @@ class YouTubeAPIHandler:
             if not response.get('items'):
                 return None
 
-            item = response['items'][0]
-            snippet = item.get('snippet', {})
-            statistics = item.get('statistics', {})
-            content_details = item.get('contentDetails', {})
-            branding = item.get('brandingSettings', {})
-            topic_details = item.get('topicDetails', {})
-            status = item.get('status', {})
-
-            return {
-                'channel_id': item.get('id', ''),
-                'title': snippet.get('title', ''),
-                'description': snippet.get('description', ''),
-                'custom_url': snippet.get('customUrl', ''),
-                'published_at': snippet.get('publishedAt', ''),
-                'country': snippet.get('country', ''),
-                'default_language': snippet.get('defaultLanguage', ''),
-
-                # Thumbnails
-                'thumbnail_default': snippet.get('thumbnails', {}).get('default', {}).get('url', ''),
-                'thumbnail_medium': snippet.get('thumbnails', {}).get('medium', {}).get('url', ''),
-                'thumbnail_high': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
-
-                # Statistics
-                'view_count': int(statistics.get('viewCount', 0)),
-                'subscriber_count': int(statistics.get('subscriberCount', 0)),
-                'hidden_subscriber_count': statistics.get('hiddenSubscriberCount', False),
-                'video_count': int(statistics.get('videoCount', 0)),
-
-                # Content details
-                'uploads_playlist': content_details.get('relatedPlaylists', {}).get('uploads', ''),
-                'likes_playlist': content_details.get('relatedPlaylists', {}).get('likes', ''),
-                'favorites_playlist': content_details.get('relatedPlaylists', {}).get('favorites', ''),
-
-                # Branding
-                'keywords': branding.get('channel', {}).get('keywords', ''),
-                'trailer_video_id': branding.get('channel', {}).get('unsubscribedTrailer', ''),
-                'featured_channels_title': branding.get('channel', {}).get('featuredChannelsTitle', ''),
-                'featured_channels_urls': branding.get('channel', {}).get('featuredChannelsUrls', []),
-                'banner_url': branding.get('image', {}).get('bannerExternalUrl', ''),
-
-                # Topics
-                'topic_ids': topic_details.get('topicIds', []),
-                'topic_categories': topic_details.get('topicCategories', []),
-
-                # Status
-                'privacy_status': status.get('privacyStatus', ''),
-                'is_linked': status.get('isLinked', False),
-                'long_uploads_status': status.get('longUploadsStatus', ''),
-                'made_for_kids': status.get('madeForKids', False),
-            }
+            return self._map_channel_item(response['items'][0])
 
         except Exception as e:
             raise RuntimeError(f"Failed to get channel info: {redact_secrets(e)}")
+
+    def _map_channel_item(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Map a single `channels().list()` response item to our channel dict.
+
+        Single owner of the channels-API item -> dict shape, shared by
+        `get_channel_info` (any public channel, by id/username/handle) and
+        `get_my_channel` (OAuth `mine=True`) so both stay in lockstep instead
+        of drifting apart as two copies of the same ~40-line mapping.
+        """
+        snippet = item.get('snippet', {})
+        statistics = item.get('statistics', {})
+        content_details = item.get('contentDetails', {})
+        branding = item.get('brandingSettings', {})
+        topic_details = item.get('topicDetails', {})
+        status = item.get('status', {})
+
+        return {
+            'channel_id': item.get('id', ''),
+            'title': snippet.get('title', ''),
+            'description': snippet.get('description', ''),
+            'custom_url': snippet.get('customUrl', ''),
+            'published_at': snippet.get('publishedAt', ''),
+            'country': snippet.get('country', ''),
+            'default_language': snippet.get('defaultLanguage', ''),
+
+            # Thumbnails
+            'thumbnail_default': snippet.get('thumbnails', {}).get('default', {}).get('url', ''),
+            'thumbnail_medium': snippet.get('thumbnails', {}).get('medium', {}).get('url', ''),
+            'thumbnail_high': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
+
+            # Statistics
+            'view_count': int(statistics.get('viewCount', 0)),
+            'subscriber_count': int(statistics.get('subscriberCount', 0)),
+            'hidden_subscriber_count': statistics.get('hiddenSubscriberCount', False),
+            'video_count': int(statistics.get('videoCount', 0)),
+
+            # Content details
+            'uploads_playlist': content_details.get('relatedPlaylists', {}).get('uploads', ''),
+            'likes_playlist': content_details.get('relatedPlaylists', {}).get('likes', ''),
+            'favorites_playlist': content_details.get('relatedPlaylists', {}).get('favorites', ''),
+
+            # Branding
+            'keywords': branding.get('channel', {}).get('keywords', ''),
+            'trailer_video_id': branding.get('channel', {}).get('unsubscribedTrailer', ''),
+            'featured_channels_title': branding.get('channel', {}).get('featuredChannelsTitle', ''),
+            'featured_channels_urls': branding.get('channel', {}).get('featuredChannelsUrls', []),
+            'banner_url': branding.get('image', {}).get('bannerExternalUrl', ''),
+
+            # Topics
+            'topic_ids': topic_details.get('topicIds', []),
+            'topic_categories': topic_details.get('topicCategories', []),
+
+            # Status
+            'privacy_status': status.get('privacyStatus', ''),
+            'is_linked': status.get('isLinked', False),
+            'long_uploads_status': status.get('longUploadsStatus', ''),
+            'made_for_kids': status.get('madeForKids', False),
+        }
 
     def get_multiple_channels(self, channel_ids: List[str]) -> List[Dict[str, Any]]:
         """
@@ -2012,3 +2129,99 @@ class YouTubeAPIHandler:
 
         except Exception as e:
             raise RuntimeError(f"Failed to get multiple channels: {redact_secrets(e)}")
+
+    # --- OAuth-only "mine" methods (current user's own data) ---
+    #
+    # An API key can read any PUBLIC channel/playlist by explicit id, but it
+    # structurally cannot answer "what's MY channel/playlist/subscriptions"
+    # — that requires the request to be made as an authorized user (OAuth).
+    # Each method below guards with `_require_oauth()` first, so a caller on
+    # API-key-only auth gets a typed `YouTubeAuthRequiredError` before any
+    # network call, not a raw Google "Login Required" 400.
+
+    def get_my_channel(self) -> Dict[str, Any]:
+        """
+        Get the CURRENT (logged-in) user's own channel. Requires OAuth.
+
+        Same dict shape as `get_channel_info` (both share `_map_channel_item`).
+
+        Returns:
+            Channel info dict (see `_map_channel_item`), or None if the
+            authorized account has no channel.
+
+        Raises:
+            YouTubeAuthRequiredError: if not logged in via OAuth.
+        """
+        self._require_oauth()
+
+        try:
+            response = self._youtube.channels().list(
+                part='snippet,contentDetails,statistics,brandingSettings,status',
+                mine=True,
+            ).execute()
+
+            if not response.get('items'):
+                return None
+
+            return self._map_channel_item(response['items'][0])
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to get my channel: {redact_secrets(e)}")
+
+    def get_my_playlists(self, max_results: int = 25,
+                         page_token: str = None) -> Dict[str, Any]:
+        """
+        Get the CURRENT (logged-in) user's own playlists. Requires OAuth.
+
+        Args:
+            max_results: Maximum number of results (max 50)
+            page_token: Token for pagination
+
+        Returns:
+            Dictionary with a 'playlists' list (id, title, description,
+            item_count, privacy_status, published_at, thumbnail) and
+            pagination info.
+
+        Raises:
+            YouTubeAuthRequiredError: if not logged in via OAuth.
+        """
+        self._require_oauth()
+
+        try:
+            params = {
+                'part': 'snippet,contentDetails,status',
+                'mine': True,
+                'maxResults': min(max_results, 50),
+            }
+
+            if page_token:
+                params['pageToken'] = page_token
+
+            response = self._youtube.playlists().list(**params).execute()
+
+            playlists = []
+            for item in response.get('items', []):
+                snippet = item.get('snippet', {})
+                content_details = item.get('contentDetails', {})
+                status = item.get('status', {})
+                description = snippet.get('description', '') or ''
+
+                playlists.append({
+                    'id': item.get('id', ''),
+                    'title': snippet.get('title', ''),
+                    'description': description[:200],
+                    'item_count': content_details.get('itemCount', 0),
+                    'privacy_status': status.get('privacyStatus', ''),
+                    'published_at': snippet.get('publishedAt', ''),
+                    'thumbnail': snippet.get('thumbnails', {}).get('default', {}).get('url', ''),
+                })
+
+            return {
+                'playlists': playlists,
+                'next_page_token': response.get('nextPageToken'),
+                'prev_page_token': response.get('prevPageToken'),
+                'quota_cost': 1,
+            }
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to get my playlists: {redact_secrets(e)}")

@@ -3,13 +3,14 @@ api.py — YouTubeToolkit, the top-level entry point (★ load-bearing).
 
 Wiring + public surface only. Owns the handlers (pytubefix / yt-dlp /
 YouTube API) + anti-detection, constructs the domain services, and wires up
-the five sub-APIs (get/download/search/analyze/stream) — which ARE the public
-contract. The legacy flat methods are gone (see MIGRATION.md); business logic
-and handler-fallback live in youtube_toolkit/services/, reached only through
-the sub-APIs. Only two bare helpers stay here: extract_video_id (a util with
-no sub-API home) and _sanitize_filename (used by the services).
+the six sub-APIs (get/download/search/analyze/stream/mine) — which ARE the
+public contract. The legacy flat methods are gone (see MIGRATION.md);
+business logic and handler-fallback live in youtube_toolkit/services/,
+reached only through the sub-APIs. Only two bare helpers stay here:
+extract_video_id (a util with no sub-API home) and _sanitize_filename (used
+by the services).
 
-Reads: handlers.* · services.* (domain logic) · sub_apis (5 facades) · utils.anti_detection
+Reads: handlers.* · services.* (domain logic) · sub_apis (6 facades) · utils.anti_detection
 """
 
 from .handlers.pytubefix_handler import PyTubeFixHandler
@@ -25,6 +26,7 @@ from .services.comments import CommentsService
 from .services.captions import CaptionsService
 from .services.search import SearchService
 from .services.download import DownloadService
+from .services.mine import MineService
 
 
 class YouTubeToolkit:
@@ -71,6 +73,13 @@ class YouTubeToolkit:
         toolkit.stream.video(url)                 # Video buffer
         toolkit.stream.live.status(url)           # Live stream status
 
+        # MINE - OAuth-only: the logged-in user's OWN data
+        toolkit.mine.login()                      # Run OAuth login flow
+        toolkit.mine.status()                     # Login state
+        toolkit.mine.channel()                    # My channel
+        toolkit.mine.playlists()                  # My playlists
+        toolkit.mine.subscriptions()               # My subscriptions
+
     The legacy flat methods (toolkit.get_video_info(), etc.) were removed in
     v2.0; see MIGRATION.md for the flat-method -> sub-API mapping.
     """
@@ -106,14 +115,16 @@ class YouTubeToolkit:
         self._captions = CaptionsService(self)
         self._search = SearchService(self)
         self._download = DownloadService(self)
+        self._mine = MineService(self)
 
-        # Initialize Core Sub-APIs (v2.0 Consolidated - 5 Core APIs)
-        from .sub_apis import GetAPI, DownloadAPI, SearchAPI, AnalyzeAPI, StreamAPI
+        # Initialize Core Sub-APIs (v2.0 Consolidated - 5 Core APIs, plus mine)
+        from .sub_apis import GetAPI, DownloadAPI, SearchAPI, AnalyzeAPI, StreamAPI, MineAPI
         self.get = GetAPI(self)
         self.download = DownloadAPI(self)
         self.search = SearchAPI(self)
         self.analyze = AnalyzeAPI(self)
         self.stream = StreamAPI(self)
+        self.mine = MineAPI(self)
 
     def extract_video_id(self, url: str) -> str:
         """
