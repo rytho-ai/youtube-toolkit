@@ -10,9 +10,12 @@ reached only through the sub-APIs. Only two bare helpers stay here:
 extract_video_id (a util with no sub-API home) and _sanitize_filename (used
 by the services).
 
-Reads: handlers.* · services.* (domain logic) · sub_apis (6 facades) · utils.anti_detection
+Reads: handlers.* · services.* (domain logic) · sub_apis (6 facades) · core.network_policy · utils.anti_detection
 """
 
+from typing import Optional
+
+from .core.network_policy import RequestPolicy
 from .handlers.pytubefix_handler import PyTubeFixHandler
 from .handlers.yt_dlp_handler import YTDLPHandler
 from .handlers.youtube_api_handler import YouTubeAPIHandler
@@ -84,12 +87,27 @@ class YouTubeToolkit:
     v2.0; see MIGRATION.md for the flat-method -> sub-API mapping.
     """
 
-    def __init__(self, verbose: bool = False):
+    def __init__(
+        self,
+        verbose: bool = False,
+        request_timeout_sec: Optional[float] = None,
+        transport_retries: int = 0,
+        retry_backoff_sec: float = 0.15,
+    ):
         """
         Initialize the YouTube Toolkit.
 
         Args:
             verbose: Whether to show detailed progress information
+            request_timeout_sec: per-socket-operation timeout for official
+                YouTube Data API requests. None (default) = no timeout,
+                matching pre-2.1 behavior.
+            transport_retries: retries after transient TRANSPORT failures
+                (SSL / socket timeout / connection reset / DNS) on official
+                API requests. Quota, auth, and validation errors are never
+                retried. 0 (default) = fail on first error.
+            retry_backoff_sec: base sleep between transport retries,
+                doubled each attempt.
         """
         self.verbose = verbose
 
@@ -101,8 +119,16 @@ class YouTubeToolkit:
         self.ytdlp = YTDLPHandler(self.anti_detection)
         # Alias for backward compatibility
         self.yt_dlp = self.ytdlp
-        # YouTube API doesn't need anti-detection (it's official)
-        self.youtube_api = YouTubeAPIHandler()
+        # YouTube API doesn't need anti-detection (it's official); it takes
+        # the network policy instead — the only handler on the official
+        # transport.
+        self.youtube_api = YouTubeAPIHandler(
+            policy=RequestPolicy(
+                timeout_sec=request_timeout_sec,
+                transport_retries=transport_retries,
+                retry_backoff_sec=retry_backoff_sec,
+            )
+        )
 
         # Initialize domain services (business logic descended out of this
         # god class; the sub-APIs below delegate into these).

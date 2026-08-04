@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-04
+
+### Added (official-API network policy — surfaced by Breaks' compatibility-helper workaround)
+
+- **`YouTubeToolkit(request_timeout_sec=, transport_retries=, retry_backoff_sec=)`** —
+  a first-class network policy for official YouTube Data API requests,
+  threaded `YouTubeToolkit` → `YouTubeAPIHandler` → the Google API transport.
+  Previously a consumer needing a timeout had to reach into private internals
+  (`handler._youtube ... _http.timeout`) that could break on any release.
+  - `request_timeout_sec` is applied to the `httplib2` transport when the
+    client is lazily built, on **both** the OAuth and API-key paths (OAuth
+    credentials are wrapped in `AuthorizedHttp` around the policy transport).
+  - `transport_retries` retries only transient **transport** failures — SSL
+    errors, socket timeouts, connection resets, DNS (`ServerNotFoundError`) —
+    with exponential backoff (`retry_backoff_sec`, doubling per attempt).
+    Quota, auth, and validation errors (`HttpError`) are **never** retried
+    and surface on the first call. Retries operate on the raw exception,
+    before the handler's `RuntimeError` wrapping, so the last raw error is
+    preserved when retries are exhausted.
+  - New `core/network_policy.py` owns all of this; the `RequestPolicy`
+    dataclass is exported at package level for handler-direct consumers.
+  - Defaults (`None` timeout, `0` retries) preserve pre-2.1 behavior exactly.
+
 ## [2.0.2] - 2026-07-17
 
 ### Fixed (yt-dlp progress-bar leak — surfaced by Ricercar's external MCP dogfood testing)

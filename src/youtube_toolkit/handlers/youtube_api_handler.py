@@ -1,6 +1,9 @@
 """YouTube API handler for YouTube Toolkit.
 
 This handler implements rich metadata extraction using the official YouTube Data API v3.
+Network behavior (request timeout, transport-level retry) is injected as a
+core.network_policy.RequestPolicy at construction and applied when the Google
+client is lazily built — both the OAuth and API-key paths.
 """
 
 import os
@@ -10,6 +13,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from ..utils.helpers import redact_secrets
+from ..core.network_policy import RequestPolicy, build_policy_http, build_request_builder
 from .. import oauth
 
 
@@ -51,8 +55,15 @@ _load_env_files()
 class YouTubeAPIHandler:
     """Handler for YouTube Data API v3 functionality."""
     
-    def __init__(self):
-        """Initialize the YouTube API handler."""
+    def __init__(self, policy: Optional[RequestPolicy] = None):
+        """Initialize the YouTube API handler.
+
+        Args:
+            policy: network behavior (timeout / transport retry) for API
+                requests. Defaults to RequestPolicy() — no timeout, no
+                retries — matching pre-2.1 behavior.
+        """
+        self._policy = policy or RequestPolicy()
         self._youtube = None
         self._initialized = False
         self._api_key = None
@@ -74,9 +85,15 @@ class YouTubeAPIHandler:
             try:
                 from googleapiclient.discovery import build
 
+                request_builder = build_request_builder(self._policy)
+
                 creds = oauth.load_credentials()
                 if creds is not None:
-                    self._youtube = build('youtube', 'v3', credentials=creds)
+                    self._youtube = build(
+                        'youtube', 'v3',
+                        http=build_policy_http(self._policy, credentials=creds),
+                        requestBuilder=request_builder,
+                    )
                     self._auth_mode = 'oauth'
                     self._initialized = True
                     return
@@ -89,7 +106,12 @@ class YouTubeAPIHandler:
                         "`youtube login` (OAuth)."
                     )
 
-                self._youtube = build('youtube', 'v3', developerKey=self._api_key)
+                self._youtube = build(
+                    'youtube', 'v3',
+                    developerKey=self._api_key,
+                    http=build_policy_http(self._policy),
+                    requestBuilder=request_builder,
+                )
                 self._auth_mode = 'apikey'
                 self._initialized = True
 

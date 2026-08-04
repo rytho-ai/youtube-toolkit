@@ -35,7 +35,10 @@ class TestCredentialSelection:
                 mock_build.return_value = MagicMock()
                 handler._ensure_initialized()
 
-        mock_build.assert_called_once_with("youtube", "v3", credentials=fake_creds)
+        mock_build.assert_called_once()
+        assert mock_build.call_args.args == ("youtube", "v3")
+        # Credentials now arrive wrapped in the policy transport (AuthorizedHttp)
+        assert mock_build.call_args.kwargs["http"].credentials is fake_creds
         assert handler._auth_mode == "oauth"
         assert handler._initialized is True
 
@@ -49,7 +52,9 @@ class TestCredentialSelection:
                 mock_build.return_value = MagicMock()
                 handler._ensure_initialized()
 
-        mock_build.assert_called_once_with("youtube", "v3", developerKey="SECRET_KEY")
+        mock_build.assert_called_once()
+        assert mock_build.call_args.args == ("youtube", "v3")
+        assert mock_build.call_args.kwargs["developerKey"] == "SECRET_KEY"
         assert handler._auth_mode == "apikey"
         assert handler._initialized is True
 
@@ -76,7 +81,8 @@ class TestCredentialSelection:
                 mock_build.return_value = MagicMock()
                 handler._ensure_initialized()
 
-        mock_build.assert_called_once_with("youtube", "v3", credentials=fake_creds)
+        mock_build.assert_called_once()
+        assert mock_build.call_args.kwargs["http"].credentials is fake_creds
         assert handler._auth_mode == "oauth"
 
     def test_refresh_failure_propagates_as_oauth_error(self):

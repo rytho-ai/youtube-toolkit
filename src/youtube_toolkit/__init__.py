@@ -43,7 +43,7 @@ Quick Start:
 from .api import YouTubeToolkit
 
 __all__ = ["YouTubeToolkit"]
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __author__ = "Bo-Yu Chen"
 __description__ = "A comprehensive YouTube information and download toolkit"
 
@@ -53,6 +53,7 @@ from .core.search import SearchFilters, SearchResultItem, Thumbnails, Thumbnail,
 from .core.comments import CommentFilters, CommentResult, Comment, CommentAuthor, CommentMetrics, CommentAnalytics, CommentSentimentAnalyzer, CommentOrder
 from .core.captions import CaptionFilters, CaptionResult, CaptionTrack, CaptionContent, CaptionCue, CaptionAnalytics, CaptionFormatConverter, CaptionAnalyzer
 from .core.exceptions import TranscriptError, RateLimitedError
+from .core.network_policy import RequestPolicy
 
 # Make core classes available at package level for convenience
 __all__.extend([
@@ -64,4 +65,5 @@ __all__.extend([
     "CaptionFilters", "CaptionResult", "CaptionTrack", "CaptionContent",
     "CaptionCue", "CaptionAnalytics", "CaptionFormatConverter", "CaptionAnalyzer",
     "TranscriptError", "RateLimitedError",
+    "RequestPolicy",
 ])
