@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "pytubefix>=8.0.0",
-    "yt-dlp>=2024.1.0",
+    "yt-dlp>=2026.8.19",
     "google-api-python-client>=2.108.0",
     "google-auth-oauthlib>=1.1.0",
     "google-auth-httplib2>=0.1.1",
@@ -76,10 +76,10 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rhythmculture/youtube-toolkit"
-Documentation = "https://github.com/rhythmculture/youtube-toolkit#readme"
-Repository = "https://github.com/rhythmculture/youtube-toolkit"
-Issues = "https://github.com/rhythmculture/youtube-toolkit/issues"
+Homepage = "https://github.com/rytho-ai/youtube-toolkit"
+Documentation = "https://github.com/rytho-ai/youtube-toolkit#readme"
+Repository = "https://github.com/rytho-ai/youtube-toolkit"
+Issues = "https://github.com/rytho-ai/youtube-toolkit/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/youtube_toolkit"]

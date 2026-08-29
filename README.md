@@ -42,15 +42,15 @@ prefer it over `pip` for installs and environment management.
 
 ```bash
 # With uv (preferred)
-uv add git+https://github.com/rhythmculture/youtube-toolkit.git
+uv add git+https://github.com/rytho-ai/youtube-toolkit.git
 # ...or into an active environment:
-uv pip install git+https://github.com/rhythmculture/youtube-toolkit.git
+uv pip install git+https://github.com/rytho-ai/youtube-toolkit.git
 
 # Specific version
-uv add git+https://github.com/rhythmculture/youtube-toolkit.git@v2.0.0
+uv add git+https://github.com/rytho-ai/youtube-toolkit.git@v2.0.0
 
 # Fallback, only if uv is unavailable
-pip install git+https://github.com/rhythmculture/youtube-toolkit.git
+pip install git+https://github.com/rytho-ai/youtube-toolkit.git
 ```
 
 ### YouTube API Key (Optional)

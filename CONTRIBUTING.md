@@ -14,7 +14,7 @@ Thank you for your interest in contributing to YouTube Toolkit! This document pr
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/rhythmculture/youtube-toolkit.git
+git clone https://github.com/rytho-ai/youtube-toolkit.git
 cd youtube-toolkit
 ```
 

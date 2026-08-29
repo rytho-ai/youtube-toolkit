@@ -2,6 +2,11 @@
 
 ## What this solves
 
+First make sure the environment satisfies youtube-toolkit's supported yt-dlp
+floor (`yt-dlp>=2026.8.19`). Older yt-dlp releases can fail with HTTP 403
+because their YouTube client support is stale; that is a downloader bug, not
+evidence that a PO token or browser cookies are required.
+
 YouTube can require a Proof-of-Origin (PO) token for certain client/format
 combinations. When it's missing, yt-dlp fails with a bot-check-style error
 ("Sign in to confirm you're not a bot", HTTP 403). `download_audio`/
@@ -31,15 +36,18 @@ Deno. yt-dlp auto-detects it via its plugin framework once installed; no
 ### Setup
 
 ```bash
-# 1. Install the pip plugin (yt-dlp finds it automatically)
+# 1. Confirm yt-dlp meets the supported floor
+uv run yt-dlp --version
+
+# 2. Install the pip plugin (yt-dlp finds it automatically)
 uv pip install "youtube-toolkit[po-token]"
 # or directly: pip install bgutil-ytdlp-pot-provider
 
-# 2. Run its token-generation server (simplest: Docker)
+# 3. Run its token-generation server (simplest: Docker)
 docker run --name bgutil-provider -d --init --restart unless-stopped \
     -p 4416:4416 brainicism/bgutil-ytdlp-pot-provider
 
-# 3. Verify yt-dlp sees it
+# 4. Verify yt-dlp sees it
 yt-dlp -v <any-youtube-url> 2>&1 | grep "PO Token Providers"
 ```
 

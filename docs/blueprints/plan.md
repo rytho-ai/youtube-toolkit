@@ -1,12 +1,12 @@
 # youtube-toolkit — plan
 
-> 2026-06-23 · status index (one layer, by status). Only "what to do + which doc".
+> 2026-08-11 · status index (one layer, by status). Only "what to do + which doc".
 > grounded plans in `../plans/`, repo map in `../codebase-map/index.html`. design notes (if any) in `thoughts/`.
 > Seeded by a workflow-priming experiment (CLAUDE.md `## Dev workflow` + this tree); fill on the first real `/shape:align`.
 
-## 🚧 In progress —— v2.0 convergence in review
-> plans `../plans/2026-06-17-nav-deep-module-refactor.md`, `../plans/2026-06-17-tier3-api-convergence-and-typing.md`
-- **v2.0 deep-module refactor + src layout + uv-first** — shipped on branch `refactor/nav-deep-module`, open as **PR #1**, awaiting review/merge.
+## 🚧 In progress
+
+- None.
 
 ## ▶ Next —— packaging/lint modernization (flagged by the setup `python-lib` archetype)
 - **Lint → ruff, line-100** — drop legacy `[tool.black]` + `flake8` + `[tool.mypy]@88`.
@@ -34,7 +34,12 @@
 - **Async facade beyond downloads** — only `DownloadAPI` has `*_async` today; widen only if asked.
 
 ## ✅ Shipped
-v1.0 deep-module refactor (services/ + `core/fallback.py` + `core/captions/` split), v2.0 flat-method removal → 5 sub-APIs, dict-compatible dataclass returns, opt-in parallel/async downloads, **src layout + uv-first toolchain (2026-06-23)**。(detail in git log + CHANGELOG.md)
+
+- **v2.0 convergence (2026-06-23)** — PR #1 merged into `main`: deep-module refactor,
+  flat-method removal → 5 sub-APIs, dict-compatible dataclass returns, opt-in parallel/async
+  downloads, src layout, and uv-first toolchain. Grounded plans remain in
+  `../plans/2026-06-17-nav-deep-module-refactor.md` and
+  `../plans/2026-06-17-tier3-api-convergence-and-typing.md`.
 - **2026-07-11 audit fixes** — API-key redaction on the Data-API handler,
   comment-fetch errors propagated (`CommentResult.error`), `transcript(lang=)`
   threaded through all three layers, `comments(order='rating')` reachable,
@@ -42,3 +47,6 @@ v1.0 deep-module refactor (services/ + `core/fallback.py` + `core/captions/` spl
   `output_path` honored, `channel.shorts/streams` gained `sort_by`,
   `get_playlist_videos` always returns dicts. (303 tests; commits `15f74ae`,
   `c0ad5f5`, `55dae8a`.)
+- **OAuth + first-class network policy (2026-07-21 → 2026-08-04)** — authenticated-user
+  access shipped, followed by timeout and transport-retry policy for official API requests;
+  package version is `2.1.0` on `main`.
