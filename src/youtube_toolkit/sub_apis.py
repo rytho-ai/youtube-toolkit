@@ -353,8 +353,9 @@ class GetAPI:
         Returns:
             VideoInfo dataclass with video details
         """
-        # Get base info from handler
-        info = self._toolkit._get_info.get_video_info_pytubefix(url)
+        # Let the service choose PyTubeFix or yt-dlp. The public facade must not
+        # bypass the fallback policy by selecting a handler-specific method.
+        info = self._toolkit._get_info.get_video_info(url)
 
         # Map handler dict keys to VideoInfo fields
         video_info = VideoInfo(
@@ -1637,4 +1638,3 @@ class MineAPI:
         return self._toolkit._mine.subscriptions(
             max_results=max_results, order=order, page_token=page_token
         )
-

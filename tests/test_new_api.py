@@ -67,8 +67,8 @@ class TestGetVideoAPI:
 
         toolkit = YouTubeToolkit()
 
-        # Mock the underlying handler-level call that get.video routes through
-        with patch.object(toolkit._get_info, 'get_video_info_pytubefix') as mock:
+        # Mock the service call so this test guards the public fallback route.
+        with patch.object(toolkit._get_info, 'get_video_info') as mock:
             mock.return_value = {
                 'title': 'Test Video',
                 'duration': 180,
@@ -90,6 +90,7 @@ class TestGetVideoAPI:
             assert result.views == 1000000
             assert result.author == 'Test Channel'
             assert result.video_id == 'abc123'
+            mock.assert_called_once_with('https://youtube.com/watch?v=abc123')
 
 
 class TestDownloadAPI:
