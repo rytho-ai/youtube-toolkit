@@ -14,6 +14,54 @@ Key advantages:
 
 from typing import Optional, Dict, Any, List, Generator
 
+DEFAULT_TIMEOUT_SEC = 30.0
+"""Default per-request socket timeout for scrapetube's HTTP calls.
+
+scrapetube itself passes no timeout, and `requests` without one waits
+forever. A caller that wraps this handler in a thread (the usual way to use
+a synchronous scraper from async code) cannot cancel that thread, so a single
+unresponsive YouTube endpoint occupies a worker permanently and enough of
+them exhaust the pool. A default timeout is the only place that can be fixed.
+"""
+
+_TIMEOUT_PATCH_FLAG = "_youtube_toolkit_default_timeout"
+
+
+def _apply_default_timeout(scrapetube_module, timeout: Optional[float]) -> None:
+    """Make every scrapetube request carry a default timeout.
+
+    scrapetube builds its own `requests.Session` in `get_session()` and calls
+    `session.get`/`session.post` with no timeout, exposing no way to pass one.
+    Rather than fork it or duplicate its header/cookie setup, this wraps the
+    session it hands back: scrapetube stays the single owner of what a session
+    IS, and this only fills in the argument it never supplies.
+
+    Idempotent, and a no-op when `timeout is None` or when scrapetube's shape
+    has changed — a missing `get_session` means the upstream refactored, and
+    losing a timeout is a better failure than crashing on import.
+    """
+    if timeout is None:
+        return
+    module = getattr(scrapetube_module, "scrapetube", scrapetube_module)
+    original = getattr(module, "get_session", None)
+    if original is None or getattr(original, _TIMEOUT_PATCH_FLAG, None) is not None:
+        return
+
+    def get_session_with_timeout(*args, **kwargs):
+        session = original(*args, **kwargs)
+        request = session.request
+
+        def request_with_timeout(*a, **kw):
+            kw.setdefault("timeout", timeout)
+            return request(*a, **kw)
+
+        session.request = request_with_timeout
+        return session
+
+    setattr(get_session_with_timeout, _TIMEOUT_PATCH_FLAG, timeout)
+    module.get_session = get_session_with_timeout
+
+
 
 class ScrapeTubeHandler:
     """
@@ -37,7 +85,8 @@ class ScrapeTubeHandler:
         ...     print(v['title'])
     """
 
-    def __init__(self, sleep: float = 1.0, proxies: Optional[Dict[str, str]] = None):
+    def __init__(self, sleep: float = 1.0, proxies: Optional[Dict[str, str]] = None,
+                 timeout: Optional[float] = DEFAULT_TIMEOUT_SEC):
         """
         Initialize the ScrapeTube handler.
 
@@ -46,18 +95,24 @@ class ScrapeTubeHandler:
                    Higher values reduce rate limiting risk
             proxies: Optional proxy configuration dict
                      Example: {'http': 'http://proxy:8080', 'https': 'https://proxy:8080'}
+            timeout: Per-request socket timeout in seconds applied to every
+                     scrapetube HTTP call. `None` restores the old behaviour of
+                     waiting forever. See `_apply_default_timeout` for why this
+                     has to be injected rather than passed.
         """
         self._scrapetube = None
         self._initialized = False
         self._available = False
         self.sleep = sleep
         self.proxies = proxies
+        self.timeout = timeout
 
     def _ensure_initialized(self):
         """Ensure scrapetube is available and initialized."""
         if not self._initialized:
             try:
                 import scrapetube
+                _apply_default_timeout(scrapetube, self.timeout)
                 self._scrapetube = scrapetube
                 self._available = True
                 self._initialized = True
