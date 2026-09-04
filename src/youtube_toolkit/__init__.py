@@ -43,7 +43,7 @@ Quick Start:
 from .api import YouTubeToolkit
 
 __all__ = ["YouTubeToolkit"]
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 __author__ = "Bo-Yu Chen"
 __description__ = "A comprehensive YouTube information and download toolkit"
 
